@@ -1,0 +1,85 @@
+/* ============================================================================
+   bridge-voice — "Night Bridge"
+   Pure cascading CSS, custom to this app. Primitives carry the design;
+   no utility classes, no framework.
+
+   The signature idea: a ship's bridge at night — dark instrument panel,
+   one live signal colour for the voice channel.
+   ========================================================================== */
+
+:root {
+  --ink: #0a0e14;
+  --panel: #10161f;
+  --text: #dbe6ee;
+  --muted: #7d8fa1;
+  --signal: #4fe3a1; /* the live voice channel */
+  --line: #1d2836;
+  --maxw: 42rem;
+}
+
+html {
+  background: var(--ink);
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font: 16px/1.65 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(ellipse at top, rgba(79, 227, 161, 0.05), transparent 60%),
+    var(--ink);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+  width: min(var(--maxw), 100% - 3rem);
+  margin: 0 auto;
+  padding: 5rem 0 3rem;
+}
+
+h1 {
+  font-size: 2.6rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 1.5rem;
+}
+
+h1::before {
+  content: '●';
+  color: var(--signal);
+  font-size: 1rem;
+  vertical-align: 0.5rem;
+  margin-right: 0.75rem;
+}
+
+p {
+  margin: 0 0 1.1rem;
+  max-width: 38rem;
+}
+
+p:last-of-type {
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 1.1rem;
+}
+
+a {
+  color: var(--signal);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+footer {
+  width: min(var(--maxw), 100% - 3rem);
+  margin: 0 auto;
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
