@@ -1,0 +1,38 @@
+/* Bridge Voice dock — a handful of rules over the Bridge's own cascade. */
+#voice {
+  position: fixed;
+  inset: auto 1.25rem 1.25rem auto;
+  z-index: 50;
+  display: grid;
+  gap: 0.4rem;
+  max-width: 22rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 1rem;
+  background: rgb(16 19 26 / 0.92);
+  color: #e6e9ef;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 0.35);
+  font: inherit;
+}
+#voice button {
+  padding: 0.7rem 1rem;
+  border: 0;
+  border-radius: 999px;
+  background: #e8b04b;
+  color: #10131a;
+  font-weight: 600;
+  cursor: pointer;
+}
+#voice[data-state="listening"] button { background: #4bd08a; animation: voice-pulse 1.6s ease-in-out infinite; }
+#voice[data-state="speaking"] button { background: #6aa8ff; }
+#voice[data-state="connecting"] button { opacity: 0.6; cursor: progress; }
+#voice[data-state="error"] button { background: #ff6b6b; }
+#voice output { min-height: 1.4em; font-size: 0.95rem; line-height: 1.4; }
+#voice output:empty { display: none; }
+#voice p { margin: 0; font-size: 0.8rem; opacity: 0.65; }
+#voice q { font-style: italic; }
+#voice q::before, #voice q::after { content: "“"; }
+#voice q::after { content: "”"; }
+@keyframes voice-pulse { 50% { box-shadow: 0 0 0 0.6rem rgb(75 208 138 / 0.18); } }
+@media (max-width: 40rem) { #voice { inset: auto 0.75rem 0.75rem 0.75rem; max-width: none; } }

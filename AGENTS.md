@@ -9,50 +9,48 @@ adds the contest-specific rules.
 ## Mission
 
 Contest entry for the lablab.ai AssemblyAI Voice Agent Hackathon
-(Sep 1–30 2026, team "Hyperdrift"). Concept: **speak, and a live fleet of
-apps actually moves** — AssemblyAI's end-of-turn detection fires real MCP
-tool calls against Hyperdrift's production fleet; judges drive a read-only
-sandbox tenant themselves at a live URL. Doubles as distribution material for
-The Crew.
+(Sep 1–30 2026, team "Hyperdrift"). Concept: **the real Hyperdrift Bridge,
+the fleet cockpit never shown publicly, with a voice on it.** You speak and
+the cockpit moves; the Commander's stored verdict is read back. The plan of
+record is `docs/ONE-NIGHT-PLAN.md` (supersedes `docs/BUILD-PLAN.md`).
+Measurements and protocol lessons: `docs/VOICE-AGENT-NOTES.md`.
 
 ## Hard rules
 
-- **Contest window rule**: the CORE (voice pipeline, agent logic, MCP wiring)
-  is built DURING Sep 1–30. Before Sep 1: scaffold, docs, research only — no
-  working voice-agent logic. lablab requires original work built in the
-  window, MIT-compliant (LICENSE is MIT — keep it).
-- **Kill condition**: speak-to-action must feel instant — ~2s end-to-end from
-  end of speech to spoken answer. If the turn-fire moment can't be made to
-  feel instant, downgrade to KILL rather than submit a laggy also-ran.
-  Budget breakdown: `docs/BUILD-PLAN.md`.
+- **Contest window rule**: the voice layer (island, worklet, token function,
+  build script) is built inside Sep 1–30 with dated commits. The Bridge is
+  pre-existing infrastructure and the writeup says so plainly.
+- **Kill condition**: ~2 s from end of speech to spoken answer. Measured
+  1.8–2.1 s on 2026-09-03 with real audio; re-measure with `pnpm smoke`
+  after any change to `SESSION` in `public/voice.js`. Laggy = withdraw.
 - **Commit identity**: `yann@hyperdrift.io`, always. Never a personal gmail.
   No AI attributions or Co-Authored-By lines in commits.
-- **Judge safety**: judges never get write access. Sandbox tenant is
-  read-only. Exactly one write action, voice-confirmed, founder-authenticated
-  only.
-- **Sponsor-first**: AssemblyAI primitives (Voice Agent API /
-  Universal-Streaming) are the star of every demo moment and every line of
-  the writeup. If Whisper could replace the sponsor, the design is wrong.
+- **The snapshot is the founder's call.** `public/index.html` is a scrubbed
+  render of a private page. It stays gitignored, and nothing is deployed,
+  until the founder has read the build report and approved sanitize vs seed.
+- **Judge safety**: nothing writes. Three read-only tools. Sessions capped at
+  300 s server-side, 120 s idle client-side.
+- **Sponsor-first**: the AssemblyAI Voice Agent API is the star. Turn
+  detection fires the tool; if Whisper could replace the sponsor, the design
+  is wrong.
 - **Voice Covenant** (`meta/PHILOSOPHY.md` #8) applies to every word the
   agent speaks and every line of the writeup — enable, never diminish; sound
-  human, not agent-generated.
+  human. The founder writes the name, tagline and description himself.
 
 ## Stack rules
 
-- own-stack: Waku RSC + typed server functions. No Next.js. Reference shape:
-  `apps/poc/own-stack`.
-- Pure cascading CSS (`src/styles.css`, "Night Bridge" direction). No
-  Tailwind, no CSS-in-JS, no utility class systems. Primitives carry the
-  design; classes are a last resort.
-- pnpm only. Target ~5 production dependencies — the AssemblyAI connection is
-  a raw WebSocket + AudioWorklet, no SDK required.
+- Static HTML + one serverless function. No framework, no bundler, no SDK:
+  raw WebSocket + AudioWorklet. The Waku shell in `src/` is unused.
+- Pure cascading CSS (`public/voice.css`). No Tailwind, no CSS-in-JS.
+- pnpm only. Zero production dependencies.
 - English everywhere; one logical concern per commit; QA-then-merge, no PR
   unless genuinely needed.
 
-## Fleet wiring (read before building the MCP layer)
+## Wiring
 
-The actuator is the Fleet Commander MCP
-(`~/dev/hyperdrift/scripts/commander/mcp_server.py`, stdio; HTTP facade at
-`127.0.0.1:8765` via `hd commander serve`). Demo tools and the latency budget
-are pinned in `docs/BUILD-PLAN.md` — do not improvise new fleet surfaces
-mid-demo.
+- `window.bridge` is injected by `scripts/build-demo.mjs` at the end of the
+  Bridge's IIFE. Tools call those functions; they never reimplement them.
+- Tool routing is prompt-sensitive: few-shot examples live in
+  `system_prompt`, descriptions carry trigger + anti-trigger only, and no
+  literal example ever goes in a description (the model copies it).
+- The Fleet Commander MCP is not involved at runtime.

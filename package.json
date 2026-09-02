@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "serve": "node scripts/dev.mjs",
+    "build:demo": "node scripts/build-demo.mjs",
+    "smoke": "node scripts/smoke.mjs",
     "dev": "waku dev",
     "build": "waku build",
     "start": "waku start --port ${PORT:-8080} --host ${HOST:-127.0.0.1}",
