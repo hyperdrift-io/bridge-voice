@@ -54,3 +54,30 @@ session at 300 s (`max_session_duration_seconds`), the island ends the session
 after 120 s without speech and on tab hide, and the function rate-limits to
 twelve sessions per address per hour. `session.end` is sent on every teardown
 so the 30 s resume window is not billed.
+
+## Second night (2026-09-03, later): the default model, measured
+
+- **The session model cannot choose between tools.** With three tools it copied whatever
+  example sat in a description; with six it latched onto one tool for every utterance; the
+  opening instruction ("say exactly …") was routed through a tool as if the captain had
+  spoken. It also voiced tool syntax aloud (`captain_said(text='act')`) and, on typed turns,
+  answered from memory without calling any tool.
+- **What works: one tool, deterministic routing, verbatim read-back.** A single
+  `captain_said` tool is called on every spoken turn with the exact transcript (10/10 runs).
+  `public/router.js` decides what the words meant. The result carries `say`, and the tool's
+  `response_instructions.success` ("read the 'say' text aloud exactly as written, word for
+  word, add nothing, never say the tool name") made the read-back 100 % verbatim and clean in
+  3/3 runs, versus 58–84 % and occasional tool names without it. Handing the line back as a
+  plain string instead of `{say}` did not help. `hold` execution mode made the model narrate
+  the call; `interactive` stays clean.
+- **Typed turns** (`conversation.message` + `reply.create`) need the instruction to name the
+  tool call explicitly, or the model skips it.
+- **BYO model is gated.** `session.update` rejects an `llm` block ("define it on a stored
+  agent"). A stored agent accepts `llm` with the LLM Gateway, but this account gets "Your
+  account does not have access to this LLM Gateway model" for every model except
+  `qwen3.5-4b-32k-fast`, and a stored agent (default or BYO) streamed 15 s of silence and
+  never called its HTTP tools. Stored agents are also mutually exclusive with client-side
+  tools. Left as a founder question to AssemblyAI: does the hackathon account unlock
+  gateway models?
+- **Turn-to-tool on the spoken path with the single tool:** 1.9–2.3 s end of speech →
+  `tool.call`, unchanged from the three-tool design.

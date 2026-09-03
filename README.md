@@ -1,26 +1,26 @@
-# Bridge Voice — talk to the cockpit
+# Bridge Voice — the First Officer
 
-The Hyperdrift Bridge is the cockpit a small fleet of live apps is steered
-from. It has never been shown outside Hyperdrift. This entry puts a voice on
-it: you speak, and the cockpit you are looking at moves. Ships focus, ranks
-re-sort, the Commander's stored verdict is read back to you.
+The Hyperdrift Bridge is the cockpit a small fleet of live apps is steered from. This entry
+puts a person on it who reports to the captain. The First Officer opens the watch with the
+one thing that matters, asks for a decision, explains why when challenged, takes the order,
+answers a real question with an opinion, proposes the next step, and moves the cockpit to
+whatever is being discussed. You do not need the screen. It follows you.
 
 Built for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon)
-(lablab.ai, September 1–30 2026).
+(lablab.ai, September 1–30 2026). Concept of record: [docs/FIRST-OFFICER.md](docs/FIRST-OFFICER.md).
 
 ## What AssemblyAI does here
 
-One WebSocket to the Voice Agent API carries transcription, the model, the
-voice and turn detection. **Turn detection fires the tool.** There is no
-push-to-talk and no submit button: you stop talking and the cockpit is already
-moving, about two seconds after your last word. The three tools the agent can call
-drive the page's own functions and read data that is already in the page, so
-the tool round-trip itself is effectively free. Measurements and the protocol
-lessons: [docs/VOICE-AGENT-NOTES.md](docs/VOICE-AGENT-NOTES.md).
+One WebSocket to the Voice Agent API hosts the conversation: turn detection fires the
+action about two seconds after your last word, barge-in is understood, the officer can
+speak first, and the transcript is verbatim. The fleet does the thinking: an agenda of
+what to decide with the evidence attached, decisions recorded through the fleet's own
+paths, a question routed to the right fleet skill, urgent events spoken unprompted.
+Measurements and what the docs did not say: [docs/VOICE-AGENT-NOTES.md](docs/VOICE-AGENT-NOTES.md).
 
-Honest scope: the Bridge itself is pre-existing Hyperdrift infrastructure. The
-voice layer (`public/voice.js`, the worklet, the token function, the build
-script) is the work built inside the contest window.
+Honest scope: the Bridge and the fleet's control plane are pre-existing Hyperdrift
+infrastructure. The voice layer, the router, the agenda/decide/ask/interrupt contract and
+the demo host are the work built inside the contest window.
 
 ## Run it
 
@@ -44,28 +44,43 @@ the frozen result and stays out of git until the founder has read that report.
 ## Layout
 
 ```
-public/index.html        frozen, scrubbed Bridge snapshot + the voice island (built, gitignored until approved)
-public/voice.js          the island: mic → worklet → socket → tool dispatch → playback
-public/voice-worklet.js  AudioWorklet: Float32 → 24 kHz PCM16 chunks
+public/index.html        frozen, scrubbed Bridge snapshot with the officer inlined (built, gitignored until approved)
+public/router.js         the officer's ear: the captain's words → one intent, deterministically (tests: scripts/router.test.mjs)
+public/voice.js          the island: session, audio, the watch, the single tool, cockpit tools
 public/voice.css         a handful of rules over the Bridge's own cascade
-api/voice-token.js       the only server code: mints a single-use temp token
-scripts/build-demo.mjs   snapshot → scrub → expose page functions → inject island
-scripts/dev.mjs          zero-dependency local server
-scripts/smoke.mjs        headless kill gate with timing
-docs/ONE-NIGHT-PLAN.md   the plan this was built from
+api/voice/token.js       mints a single-use temp token (the key never reaches the browser)
+api/voice/agenda.js      the agenda contract from a frozen, scrubbed day (fixtures/agenda.json)
+api/voice/decide.js      records a decision, returns the next item
+api/voice/ask.js         a question → skill → opinion + one proposal (gateway model on the demo host)
+api/voice/interrupts.js  Helm's sandbox events, spoken unprompted
+api/voice/control.js     the judges' write path: Helm's sandbox ship only, rate-limited
+api/voice/officer.js     server-side officer state (for stored-agent HTTP tools; parked, see notes)
+scripts/build-demo.mjs   snapshot → scrub → expose page functions → inline router + island
+scripts/dev.mjs          zero-dependency local server: static + every api/voice/<name>.js
+scripts/smoke.mjs        headless kill gate: audio in, timing, routing, read-back fidelity
+scripts/agent.mjs        stored agents (BYO model + HTTP tools) — blocked by model access on this account
+scripts/transcribe.mjs   what the agent actually said, via the batch API
 ```
 
-The Waku shell in `src/` predates the pivot and is not used by the demo.
+On the live Bridge the same contract is served by the Crew API (`scripts/commander/agenda.py`,
+`ask.py`, `voice.py` in the monorepo) and the island is inlined by the renderer. Add `#text`
+to the URL to type to the officer instead of speaking.
 
-## Tools
+## What the captain can say
 
-| Tool | Moves | Returns |
-|---|---|---|
-| `open_ship` | focus mode + the ship's detail dialog | position, stage, naval rank, constraint, confidence, visitors, conversions, next step, last read |
-| `sort_fleet` | the fleet re-sorted by a metric | the ordered list |
-| `read_commander` | the ship (or the fleet radar) | the stored verdict and the last recorded read, dated |
+| Said | The officer |
+|---|---|
+| (opens the watch) | states item one and asks for a decision |
+| why? · why is that first? | reads the evidence, repeats the question |
+| do it · yes · run it · no · park it · noted | records it through the fleet, says what happens, moves on |
+| next · skip · what else | the next item |
+| the brief · what's on the agenda | counts by kind, fleet numbers, where we are |
+| show me intel · how is hyper-cv doing | focuses the ship, reads its numbers |
+| what's the read on revela | the Commander's stored verdict |
+| open the commands · search signals · click … · close | drives the cockpit |
+| anything else | a considered answer from the right fleet skill, then one proposal; "yes" logs it |
 
-Nothing writes. Sessions are capped at five minutes and end after two quiet
-minutes; there is no free tier.
+Nothing writes to a production ship from the public demo. Sessions are capped at five
+minutes and end after two quiet minutes; there is no free tier.
 
 MIT.

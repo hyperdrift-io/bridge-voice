@@ -1,0 +1,447 @@
+{
+ "ok": true,
+ "contract": "hd.voice.agenda.v1",
+ "generated": "2026-09-03T00:06:16+00:00",
+ "captain": "Captain",
+ "items": [
+  {
+   "key": "contest:dev-weekend-challenge",
+   "kind": "contest",
+   "ship": "",
+   "headline": "DEV Weekend Challenge closes 2026-09-07. Ship the entry or drop it.",
+   "why": [
+    "Deadline: starts 2026-09-04 02:00 UTC; submissions due 2026-09-07 06:59 UTC",
+    "Phase: enrolled"
+   ],
+   "options": [
+    "act",
+    "defer"
+   ],
+   "default": "defer",
+   "urgency": 90,
+   "ui": {
+    "panel": "contests"
+   },
+   "keys": [
+    "contest:dev-weekend-challenge"
+   ],
+   "topic": "DEV Weekend Challenge",
+   "rank": 1
+  },
+  {
+   "key": "alert:2026-09-01T141250+0000-661a86",
+   "kind": "alert",
+   "ship": "",
+   "headline": "Contest closing soon \u00b7 AI Tinkerers UK's Shortest Hackathon (London)",
+   "why": [
+    "Phase: scouted \u2014 closes in 1 day, submission still open.",
+    "Closing: 2026-09-02 \u2014 2026-09-02 evening, London, 3h build",
+    "Next move: enter it or drop it \u2014 run the fit gate and EV check while there is still time to build."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 70,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T141250+0000-661a86"
+   ],
+   "rank": 2
+  },
+  {
+   "key": "alert:2026-09-01T141250+0000-0e7c9d",
+   "kind": "alert",
+   "ship": "",
+   "headline": "Contest closing soon \u00b7 OpenAI WebMCP Challenge (Devpost)",
+   "why": [
+    "Phase: scouted \u2014 closes in 2 days, submission still open.",
+    "Closing: 2026-09-03 \u2014 submission due 2026-09-03 13:00 PT; $35k pool",
+    "Next move: enter it or drop it \u2014 run the fit gate and EV check while there is still time to build."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 70,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T141250+0000-0e7c9d"
+   ],
+   "rank": 3
+  },
+  {
+   "key": "alert:2026-09-01T210427+0000-471b8f",
+   "kind": "alert",
+   "ship": "",
+   "headline": "Contest decision pending \u00b7 AI Tinkerers UK's Shortest Hackathon (London) \u00b7 2026-09-02",
+   "why": [
+    "Decision: RSVP sent 2026-09-01, no confirmation yet. If nothing lands by Wed 2 Sep midday, chase the organisers or stand down.",
+    "Default 'chase once, then stand down \u2014 do not travel unconfirmed' executes after 2026-09-02 unless the founder responds first."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 70,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T210427+0000-471b8f"
+   ],
+   "rank": 4
+  },
+  {
+   "key": "alert:2026-09-01T200731+0000-08a9cf",
+   "kind": "alert",
+   "ship": "",
+   "headline": "Contest decision pending \u00b7 lablab.ai AI Genesis \u00b7 2026-09-04",
+   "why": [
+    "Decision: Dubai on-site was answered Yes at registration, which the location gate now rules out. Confirm on the event page whether an online track exists \u2014 keep it if yes, withdraw if the event is on-",
+    "Default 'withdraw if no online track \u2014 a contest we cannot physically deliver is not a contest we are in' executes after 2026-09-04 unless the founder responds first."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 70,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T200731+0000-08a9cf"
+   ],
+   "rank": 5
+  },
+  {
+   "key": "alert:2026-09-01T141250+0000-19852f",
+   "kind": "alert",
+   "ship": "",
+   "headline": "Contest decision pending \u00b7 lablab.ai AI Infra Summit Hackathon \u00b7 awaiting founder",
+   "why": [
+    "Decision: Confirm on-site attendance at Santa Clara Convention Center Sep 15-17 and rank the SiMa/Qualcomm/Intel tracks? lablab (coordination@lablab.ai, 2026-08-31) needs the form either way \u2014 a No is",
+    "Awaits the founder \u2014 this kind of decision never auto-executes."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 70,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T141250+0000-19852f"
+   ],
+   "rank": 6
+  },
+  {
+   "key": "alert:2026-09-01T200731+0000-b19245",
+   "kind": "alert",
+   "ship": "",
+   "headline": "Contest decision pending \u00b7 lablab.ai The Rise of AI Agents Hackathon \u00b7 2026-09-04",
+   "why": [
+    "Decision: Dubai on-site was answered Yes at registration, which the location gate now rules out. Confirm on the event page whether an online track exists \u2014 keep it if yes, withdraw if the event is on-",
+    "Default 'withdraw if no online track \u2014 a contest we cannot physically deliver is not a contest we are in' executes after 2026-09-04 unless the founder responds first."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 70,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T200731+0000-b19245"
+   ],
+   "rank": 7
+  },
+  {
+   "key": "alert:2026-09-01T210427+0000-a3b0f3",
+   "kind": "alert",
+   "ship": "",
+   "headline": "Contest seat unconfirmed \u00b7 AI Tinkerers UK's Shortest Hackathon (London)",
+   "why": [
+    "Applied, no confirmation yet \u2014 and it runs 2026-09-02 doors 17:30 BST, build 18:00-21:00, judging 21:00, winners 21:15.",
+    "Chase the organiser or stand down; do not travel on an unconfirmed seat."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 70,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T210427+0000-a3b0f3"
+   ],
+   "rank": 8
+  },
+  {
+   "key": "contest:lablab-ai-amd-ai-academy-challenge",
+   "kind": "contest",
+   "ship": "",
+   "headline": "",
+   "why": [
+    "Deadline: 2026-09-01 to 12-01; individual-only; GPU cloud credits",
+    "Phase: enrolled"
+   ],
+   "options": [
+    "act",
+    "defer"
+   ],
+   "default": "defer",
+   "urgency": 60,
+   "ui": {
+    "panel": "contests"
+   },
+   "keys": [
+    "contest:lablab-ai-amd-ai-academy-challenge"
+   ],
+   "topic": "lablab.ai AMD AI Academy Challenge",
+   "rank": 9
+  },
+  {
+   "key": "contest:lablab-ai-assemblyai-voice-agent-hackathon",
+   "kind": "contest",
+   "ship": "",
+   "headline": "lablab.ai AssemblyAI Voice Agent Hackathon: (1) AssemblyAI credits: they attach only when the API account is created through the hackathon page link ((link)",
+   "why": [
+    "Deadline: 2026-09-01 to 2026-09-30 11:00 EDT (16:00 BST); $10k pool = five equal winners, $1k cash + $1k AAI credits each",
+    "Founder step: (1) AssemblyAI credits: they attach only when the API account is created through the hackathon page link ((link) with cooki",
+    "Phase: enrolled",
+    "get copied as the answer to every utterance by the session LLM \u2014 put few-shot examples in the system prompt, keep descriptions to trigger + anti-trigger. Not done tonight: founder mic test, scrub appr"
+   ],
+   "options": [
+    "act",
+    "defer"
+   ],
+   "default": "defer",
+   "urgency": 60,
+   "ui": {
+    "panel": "contests"
+   },
+   "keys": [
+    "contest:lablab-ai-assemblyai-voice-agent-hackathon"
+   ],
+   "topic": "lablab.ai AssemblyAI Voice Agent Hackathon",
+   "rank": 10
+  },
+  {
+   "key": "heal:skill-routing",
+   "kind": "heal",
+   "ship": "",
+   "headline": "2 skill-routing findings need your call. First: Routing references skill `contest` which is not installed.",
+   "why": [
+    "meta/skills/contracts.yml: Install the skill or fix the name in contracts.yml.",
+    "CLAUDE.md: Run `hd foundation skills sync`."
+   ],
+   "options": [
+    "approve",
+    "reject",
+    "defer"
+   ],
+   "default": "approve",
+   "urgency": 50,
+   "ui": {
+    "panel": "ops"
+   },
+   "keys": [
+    "3e0575a980b0",
+    "d8110a568d4f"
+   ],
+   "rank": 11
+  },
+  {
+   "key": "heal:app-context",
+   "kind": "heal",
+   "ship": "",
+   "headline": "9 app-context findings need your call. First: App AGENTS.md does not clearly inherit the HD root context.",
+   "why": [
+    "apps/intel/AGENTS.md: Add a short inheritance pointer to ~/dev/hyperdrift/AGENTS.md.",
+    "apps/hyper-cv/CLAUDE.md: Symlink CLAUDE.md -> AGENTS.md, or make it a pure `@AGENTS.md` import; consolidate any unique content into AGENTS.md first.",
+    "apps/poc/wakejam/AGENTS.md: Add a delta-only app AGENTS.md that inherits the root HD context.",
+    "apps/poc/own-stack/AGENTS.md: Add a delta-only app AGENTS.md that inherits the root HD context."
+   ],
+   "options": [
+    "approve",
+    "reject",
+    "defer"
+   ],
+   "default": "approve",
+   "urgency": 50,
+   "ui": {
+    "panel": "ops"
+   },
+   "keys": [
+    "64ef41ebad8b",
+    "f6019177b836",
+    "3b2d343b5289",
+    "a69b024fdc57",
+    "ffb2e03ef279",
+    "e86e63ae4f1f",
+    "243cd9966971",
+    "bea45a136124",
+    "739086d8882f"
+   ],
+   "rank": 12
+  },
+  {
+   "key": "read:hyper-cv:run",
+   "kind": "read",
+   "ship": "hyper-cv",
+   "headline": "hyper-cv has no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "Last verdict (2026-07-08): needs more traffic. Keep spend scaling paused; verify the cv_version_saved/save handoff, then seed 5-10 disclosed no-spend sessions through the multi-application offer and r",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "hyper-cv"
+   },
+   "keys": [
+    "read:hyper-cv:run"
+   ],
+   "rank": 13
+  },
+  {
+   "key": "read:intel:run",
+   "kind": "read",
+   "ship": "intel",
+   "headline": "intel has no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "Last verdict (2026-07-08): inconclusive. Verify the subscription_started/subscription_completed capture path before interpreting the subscription funnel; approve only answer-first, disclosed outreach ",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "intel"
+   },
+   "keys": [
+    "read:intel:run"
+   ],
+   "rank": 14
+  },
+  {
+   "key": "read:revela:run",
+   "kind": "read",
+   "ship": "revela",
+   "headline": "revela has no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "Last verdict (2026-07-08): inconclusive. Approve only answer-first, disclosed outreach or low-risk distribution chores; verify the generate_lead capture path and record the channel outcome tomorrow.",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "revela"
+   },
+   "keys": [
+    "read:revela:run"
+   ],
+   "rank": 15
+  },
+  {
+   "key": "read:web3-capital:run",
+   "kind": "read",
+   "ship": "web3-capital",
+   "headline": "web3-capital has no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "Last verdict (2026-07-08): inconclusive. Run `hd growth doctor web3-capital` and `hd growth instrument web3-capital`; if checks pass, produce one real-browser verification event before traffic or conv",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "web3-capital"
+   },
+   "keys": [
+    "read:web3-capital:run"
+   ],
+   "rank": 16
+  },
+  {
+   "key": "alert:2026-09-02T073957+0000-39c3ae",
+   "kind": "alert",
+   "ship": "",
+   "headline": "HD heal: 11 finding(s) need your call",
+   "why": [
+    "[warning] app-context \u00b7 apps/intel/AGENTS.md",
+    "[warning] app-context \u00b7 apps/hyper-cv/CLAUDE.md",
+    "[warning] app-context \u00b7 apps/poc/wakejam/AGENTS.md",
+    "[warning] app-context \u00b7 apps/poc/own-stack/AGENTS.md"
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 30,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-02T073957+0000-39c3ae"
+   ],
+   "rank": 17
+  },
+  {
+   "key": "alert:2026-09-01T073048+0000-5ef5eb",
+   "kind": "alert",
+   "ship": "",
+   "headline": "HD heal: 2 finding(s) need your call",
+   "why": [
+    "[warning] app-context \u00b7 apps/stillness",
+    "[warning] skill-routing \u00b7 meta/skills/contracts.yml",
+    "Decide on the Bridge \u2192 Ops."
+   ],
+   "options": [
+    "acknowledge",
+    "defer"
+   ],
+   "default": "acknowledge",
+   "urgency": 30,
+   "ui": {
+    "panel": "notifications"
+   },
+   "keys": [
+    "alert:2026-09-01T073048+0000-5ef5eb"
+   ],
+   "rank": 18
+  }
+ ],
+ "unavailable": [],
+ "note": "Frozen from the real Hyperdrift agenda on 2026-09-03 and scrubbed; the live fleet serves this contract from scripts/commander/agenda.py."
+}

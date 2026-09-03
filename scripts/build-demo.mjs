@@ -142,18 +142,22 @@ report.push("offline: manifest + service worker dropped, Crew API fetches short-
 const exportLine = `
   window.bridge = { focusShip, exitFocusMode, visibleShips, selectedShip, openShip, applyFleetView, activeSortMode, updateRanks, showWorkspace, renderFleetSearch, searchEntries, activateSearchEntry, openCommandPalette, closeCommandPalette };
 `;
-const iifeEnd = html.lastIndexOf("})();\n</script>");
-if (iifeEnd < 0) throw new Error("could not find the Bridge IIFE end — page shape changed");
-html = html.slice(0, iifeEnd) + exportLine + html.slice(iifeEnd);
+if (!html.includes("window.bridge = {")) {
+  const iifeEnd = html.lastIndexOf("})();\n</script>");
+  if (iifeEnd < 0) throw new Error("could not find the Bridge IIFE end — page shape changed");
+  html = html.slice(0, iifeEnd) + exportLine + html.slice(iifeEnd);
+}
 
 // 5. Inject the voice island.
+// Inlined, like the Bridge itself: one self-contained file. router.js first (voice.js calls officerRoute).
+const island = ["router.js", "voice.js"].map((f) => readFileSync(join("public", f), "utf8")).join("\n").replace(/<\/script>/g, "<\\/script>");
 html = html.replace(
   "</head>",
-  `<meta name="robots" content="noindex">\n<link rel="stylesheet" href="voice.css">\n</head>`
+  `<meta name="robots" content="noindex">\n<style>\n${readFileSync("public/voice.css", "utf8")}\n</style>\n</head>`
 );
 html = html.replace(
   "</body>",
-  `<script type="application/json" id="bridge-reads">${JSON.stringify(reads)}</script>\n<script src="voice.js" defer></script>\n</body>`
+  `<script type="application/json" id="bridge-reads">${JSON.stringify(reads)}</script>\n<script>\n${island}\n</script>\n</body>`
 );
 
 mkdirSync(dirname(out), { recursive: true });

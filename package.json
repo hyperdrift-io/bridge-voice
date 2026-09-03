@@ -9,7 +9,7 @@
     "smoke": "node scripts/smoke.mjs",
     "dev": "waku dev",
     "build": "waku build",
-    "start": "waku start --port ${PORT:-8080} --host ${HOST:-127.0.0.1}",
+    "start": "node scripts/dev.mjs",
     "typegen": "waku router typegen"
   },
   "dependencies": {
@@ -22,5 +22,8 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

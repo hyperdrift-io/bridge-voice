@@ -1,5 +1,6 @@
-// The only server code: mint a single-use AssemblyAI temp token.
-// The API key never reaches the browser. Vercel-style Node handler; scripts/dev.mjs uses the same function locally.
+// Demo host: mint a single-use AssemblyAI temp token. The API key never reaches the browser.
+// Vercel-style Node handler; scripts/dev.mjs uses the same function locally.
+// On the real Bridge the equivalent lives in the Crew API (scripts/commander/voice.py in the monorepo).
 const TOKEN_URL = "https://agents.assemblyai.com/v1/token";
 const TOKEN_TTL_S = 60; // browser must open the socket within a minute
 const SESSION_CAP_S = 300; // hard stop per session — there is no free tier
