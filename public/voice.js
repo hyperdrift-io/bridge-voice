@@ -215,7 +215,7 @@
     "approve,reject,defer": "Shall I hand it to an agent, drop it, or park it?",
     "run,defer": "Shall I run it now, or park it?",
   };
-  const OPEN_QUESTIONS = ["What next, Captain?", "Where to now?", "What would you like to do with that?"];
+  const OPEN_QUESTIONS = ["What next, Captain?", "Where to now?"];
   let openQuestion = 0;
   const asksSomething = (text) => /\?["”']?\s*$/.test(text);
   const ask = (it) => QUESTIONS[it.options.join(",")] || `${it.options.join(", ").replace(/, ([^,]*)$/, ", or $1")}?`;
@@ -321,7 +321,11 @@
     const body = await api("/ask", { method: "POST", body: JSON.stringify({ accept: p }) });
     return { say: body.say || `Logged: ${p.title}.`, proposal: p };
   }
-  const shipLine = (f) => `${f.ship}, rank ${f.position.replace("#", "")}, ${f.stage}${f.visitors ? `, ${f.visitors} visitors` : ""}${f.constraint ? `, constraint ${f.constraint}` : ""}. ${f.read_line}`;
+  const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+  const shipLine = (f) => {
+    const rank = ORDINALS[Number(f.position.replace("#", "")) - 1];
+    return `${f.ship} ${rank ? `is ranked ${rank}` : "is unranked"}, at the ${f.stage} stage${f.visitors ? `, with ${f.visitors} visitors` : ""}.${f.constraint ? ` What holds it back is ${f.constraint}.` : ""} ${f.read_line}`;
+  };
   const readLine = (f) => `${f.ship}: ${f.read_line} ${f.last_read ? `Last read ${f.last_read.date}: ${f.last_read.verdict}. ${f.last_read.pragmatic}` : "No recorded read yet."}`;
 
   // ── Cockpit tools (the page's own functions + what is already in the DOM) ───

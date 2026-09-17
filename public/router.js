@@ -57,6 +57,7 @@
       .replace(/\s*[·•|]\s*/g, ", ")
       .replace(/\s*(→|->|=>)\s*/g, " to ")
       .replace(/\((s|es)\)/g, "$1")
+      .replace(/(\w)_(?=\w)/g, "$1 ")
       .replace(/[`*_#]+/g, "")
       .replace(/\s+([,.;:?!])/g, "$1")
       .replace(/\s+/g, " ")

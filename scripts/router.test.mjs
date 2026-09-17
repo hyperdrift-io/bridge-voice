@@ -50,3 +50,4 @@ const today = new Date("2026-09-17T12:00:00Z");
 test("forEar: a date a person would say", () => assert.equal(forEar("closes 2026-09-30. Go?", today), "closes 30 September. Go?"));
 test("forEar: another year keeps its year", () => assert.equal(forEar("since 2025-07-08", today), "since 8 July 2025"));
 test("forEar: symbols out", () => assert.equal(forEar("Contest closing soon · 2 finding(s) in `contracts.yml` → fix", today), "Contest closing soon, 2 findings in contracts.yml to fix"));
+test("forEar: event names become words", () => assert.equal(forEar("verify the generate_lead capture path", today), "verify the generate lead capture path"));
