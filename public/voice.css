@@ -28,6 +28,11 @@
 #voice[data-state="speaking"] button { background: #6aa8ff; }
 #voice[data-state="connecting"] button { opacity: 0.6; cursor: progress; }
 #voice[data-state="error"] button { background: #ff6b6b; }
+#voice meter { width: 100%; height: 0.45rem; }
+#voice[data-mic="off"] meter, #voice small:empty { display: none; }
+#voice small { font-size: 0.8rem; line-height: 1.35; opacity: 0.8; }
+#voice:is([data-mic="hearing"], [data-mic="heard"]) small { color: #4bd08a; opacity: 1; }
+#voice:is([data-mic="blocked"], [data-mic="silent"], [data-mic="unheard"], [data-mic="stalled"]) small { color: #ffb4a8; opacity: 1; }
 #voice output { min-height: 1.4em; font-size: 0.95rem; line-height: 1.4; }
 #voice output:empty { display: none; }
 #voice p { margin: 0; font-size: 0.8rem; opacity: 0.65; }

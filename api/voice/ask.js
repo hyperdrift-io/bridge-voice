@@ -32,24 +32,35 @@ export default async function handler(req, res) {
   if (!question) { res.status(400).json({ ok: false, error: "question is required" }); return; }
   const ship = String(req.body?.ship || "").toLowerCase();
   const skill = (RULES.find(([re]) => re.test(question.toLowerCase())) || [null, "strategist"])[1];
+  // A small model answers from what it is handed and nothing else: the ship's own facts (sent by the island from the
+  // cockpit) and only the agenda items about that ship. Handing it the whole agenda made it answer a pricing question
+  // with heal findings (2026-09-17).
   const agenda = load();
-  const context = agenda.items.filter((i) => !ship || i.ship === ship || !i.ship).slice(0, 6).map((i) => `- [${i.kind}${i.ship ? " " + i.ship : ""}] ${i.headline} ${i.why.slice(0, 2).join(" ")}`).join("\n");
-  const prompt = `You are the First Officer of the Hyperdrift Bridge, answering the captain out loud. Speak to enable: strengths first, a gap is a next step, never blame. Sound like a person with an opinion.
+  const items = agenda.items.filter((i) => (ship ? i.ship === ship : true)).slice(0, 4).map((i) => `- ${i.headline} ${i.why.slice(0, 2).join(" ")}`).join("\n");
+  const facts = Object.entries(req.body?.facts || {}).filter(([, v]) => v && typeof v !== "object").map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${String(v).slice(0, 300)}`).join("\n");
+  const read = req.body?.facts?.last_read;
+  const lastRead = read ? `- last Commander read (${read.date}): verdict ${String(read.verdict).replace(/_/g, " ")}. ${read.pragmatic} Opportunity: ${read.opportunity} Confidence: ${read.confidence}` : "";
+  const prompt = `You are the First Officer of the Hyperdrift Bridge, answering the captain out loud, like a trusted colleague across the table.
+Voice: warm, plain, direct. Strengths first; a gap is a next step, never a fault. No alarm words (bleeding, dying, killing, disaster, failing). No jargon you were not given. Never invent a number, a name or a fact: if the facts below do not settle it, say what you would check first.
 Skill (${skill}): ${GUIDES[skill]}
-Context (the fleet's agenda${ship ? `, ship ${ship}` : ""}):
-${context || "(none)"}
+${ship ? `What we know about ${ship}:\n${[facts, lastRead].filter(Boolean).join("\n") || "(nothing recorded)"}\n` : ""}On the agenda${ship ? ` for ${ship}` : ""}:
+${items || "(nothing)"}
 ${req.body?.item ? `We are currently on: ${req.body.item.headline}\n` : ""}Captain asks: ${question}
 
-Answer for the ear, under 80 words: your opinion first, one reason from the context, then stop. Then on a final separate line propose exactly one next step as JSON:
+Answer for the ear in under 70 words, in full sentences: your opinion first, then the one fact above that decides it, then stop. No lists, no headings. Then on a final separate line propose exactly one next step as JSON:
 PROPOSAL: {"kind": "note|mission|read|none", "title": "<one line>", "ask": "<Shall I ...? in ten words>"}`;
   let raw = "";
   try {
-    const r = await fetch(GATEWAY, { method: "POST", headers: { authorization: process.env.ASSEMBLYAI_API_KEY, "content-type": "application/json" }, body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], max_tokens: 260 }) });
-    const j = await r.json();
-    raw = j.choices?.[0]?.message?.content || "";
-    if (!raw) throw new Error(j.metadata?.errors?.[0] || j.message || `gateway ${r.status}`);
+    // The gateway refuses bursts ("too many requests"); one quiet retry covers a captain who asks twice in a row.
+    for (let attempt = 0; attempt < 2 && !raw; attempt++) {
+      if (attempt) await new Promise((ok) => setTimeout(ok, 1200));
+      const r = await fetch(GATEWAY, { method: "POST", headers: { authorization: process.env.ASSEMBLYAI_API_KEY, "content-type": "application/json" }, body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], max_tokens: 260, temperature: 0.3 }) });
+      const j = await r.json();
+      raw = j.choices?.[0]?.message?.content || "";
+      if (!raw && (attempt || !/too many requests/i.test(JSON.stringify(j)))) throw new Error(j.metadata?.errors?.[0] || j.message || `gateway ${r.status}`);
+    }
   } catch (err) {
-    res.status(502).json({ ok: false, error: String(err.message || err), say: `I could not get a considered answer: ${String(err.message || err)}.` });
+    res.status(502).json({ ok: false, error: String(err.message || err), say: `I could not get a considered answer just now: ${String(err.message || err)}. Would you ask me again?` });
     return;
   }
   let say = raw.trim(), proposal = null;

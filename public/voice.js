@@ -20,7 +20,8 @@
   const SESSION = {
     system_prompt: [
       "You are the First Officer of the Hyperdrift Bridge. You report to the captain, who runs a small fleet of live apps.",
-      "For everything the captain says, call captain_said with their words, every time, then say the result's 'say' text word for word and nothing else.",
+      "For everything the captain says, call captain_said with their words, exactly once per thing they say, then say the result's 'say' text word for word and nothing else.",
+      "Once captain_said has returned, never call it again until the captain speaks again. Just read the 'say' text.",
       "If the result has no 'say' but has 'context', answer from the context in two short sentences, opinion first.",
       "When an instruction tells you to say something exactly, say exactly that.",
       "Never speak a tool name, its arguments, brackets or code. Only the 'say' text.",
@@ -37,7 +38,7 @@
       {
         type: "function",
         name: "captain_said",
-        description: "Call this for everything the captain says, every single time, passing their words verbatim. Never answer without calling it. Returns 'say', the exact line to speak.",
+        description: "Call this once for each thing the captain says, passing their words verbatim. Never answer without calling it; never call it twice for the same words. Returns 'say', the exact line to speak.",
         parameters: { type: "object", properties: { text: { type: "string", description: "The captain's words, verbatim" } }, required: ["text"] },
         execution_mode: "interactive", // measured 2026-09-03: hold made the model narrate the call; interactive stays clean
         timeout_seconds: 120,
@@ -54,12 +55,19 @@
   dock.dataset.state = "idle";
   dock.innerHTML = `
     <button type="button">Open the watch</button>
+    <meter min="0" max="1" value="0" aria-label="Microphone level"></meter>
+    <small aria-live="polite"></small>
     <output aria-live="polite"></output>
     <form><input name="say" autocomplete="off" placeholder="…or type to the officer" aria-label="Type to the officer"></form>
     <p>The officer opens with what matters. <q>why?</q> · <q>do it</q> · <q>next</q> · <q>the brief</q> · <q>show me intel</q> · or ask anything.</p>`;
   document.body.append(dock);
   const button = dock.querySelector("button");
   const out = dock.querySelector("output");
+  const meter = dock.querySelector("meter");
+  const micLine = dock.querySelector("small");
+  // Mic health, always in view: listening · hearing · heard · silent · unheard · stalled · blocked (mic.js decides which).
+  const showMic = ({ state, text, level }) => { dock.dataset.mic = state; meter.value = level; if (micLine.textContent !== text) micLine.textContent = text; };
+  dock.dataset.mic = "off";
   const form = dock.querySelector("form");
   const input = dock.querySelector("input");
   const setState = (state, text) => {
@@ -83,10 +91,13 @@
   let interruptTimer = null;
   let interruptsSince = "";
   let pendingProposal = null;
+  let turn = 0; // one per captain utterance, spoken or typed
+  let answered = { turn: -1, result: null }; // the default model sometimes calls the tool twice for one utterance (seen 2026-09-17); the second call gets the same answer and acts on nothing
+  let pendingTurn = 0; // the captain's turn count when the proactive line was issued
   let pendingSay = ""; // a proactive line; if the model routes it through the tool instead of saying it, the tool hands it back
 
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
-  const sayExactly = (text) => { pendingSay = text; send({ type: "reply.create", instructions: `Say exactly: "${text.replace(/"/g, "'")}"` }); };
+  const sayExactly = (text) => { pendingSay = text; pendingTurn = turn; send({ type: "reply.create", instructions: `Say exactly: "${text.replace(/"/g, "'")}"` }); };
   const touchIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => end("Watch ended after two quiet minutes."), IDLE_MS); };
 
   async function start() {
@@ -95,17 +106,7 @@
       const token = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); }).then((j) => j.token);
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       let ready = false;
-      if (!TEXT_ONLY) {
-        try {
-          mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-          await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
-          const worklet = new AudioWorkletNode(ctx, "pcm-processor", { processorOptions: { inputSampleRate: ctx.sampleRate, targetSampleRate: SAMPLE_RATE } });
-          ctx.createMediaStreamSource(mic).connect(worklet);
-          worklet.port.onmessage = ({ data }) => { if (ready) send({ type: "input.audio", audio: b64(data) }); };
-        } catch (err) {
-          out.textContent = "No microphone; type to the officer instead.";
-        }
-      }
+      if (!TEXT_ONLY) mic = await globalThis.officerMic.open({ ctx, rate: SAMPLE_RATE, onHealth: showMic, onChunk: (pcm) => { if (ready) send({ type: "input.audio", audio: b64(pcm) }); } });
       const url = new URL(WS_URL);
       url.searchParams.set("token", token);
       ws = new WebSocket(url);
@@ -116,14 +117,14 @@
         const ev = JSON.parse(data);
         switch (ev.type) {
           case "session.ready": ready = true; playhead = 0; setState("listening", ""); touchIdle(); openWatch(); break;
-          case "input.speech.started": userSpeaking = true; touchIdle(); setState("listening"); break;
+          case "input.speech.started": userSpeaking = true; if (mic) mic.note("speech"); touchIdle(); setState("listening"); break;
           case "input.speech.stopped": userSpeaking = false; break;
           case "transcript.user.delta": out.textContent = ev.text; break;
-          case "transcript.user": userSpeaking = false; lastUserText = ev.text; lastUserAt = Date.now(); out.textContent = ev.text; break;
-          case "reply.started": if (dock.dataset.state !== "thinking") setState("speaking"); break;
+          case "transcript.user": userSpeaking = false; turn += 1; lastUserText = ev.text; lastUserAt = Date.now(); if (mic) mic.note("heard", ev.text); out.textContent = ev.text; break;
+          case "reply.started": if (mic) mic.note("officer", true); if (dock.dataset.state !== "thinking") setState("speaking"); break;
           case "reply.audio": play(ev.data); break;
           case "transcript.agent": out.textContent = ev.text; break;
-          case "reply.done": pendingSay = ""; if (ev.status === "interrupted") flush(); if (dock.dataset.state !== "thinking") setState("listening"); break;
+          case "reply.done": if (mic) mic.note("officer", false); pendingSay = ""; if (ev.status === "interrupted") flush(); if (dock.dataset.state !== "thinking") setState("listening"); break;
           case "tool.call": runTool(ev); break;
           case "session.error": console.error("session.error", ev); if (!ready) teardown(`${ev.code}: ${ev.message}`); else out.textContent = ev.message; break;
           case "session.ended": teardown("Watch ended.", "ended"); break;
@@ -143,7 +144,8 @@
     clearInterval(interruptTimer);
     flush();
     if (ws) { ws.onclose = null; try { ws.close(); } catch {} ws = null; }
-    if (mic) { mic.getTracks().forEach((t) => t.stop()); mic = null; }
+    if (mic) { mic.close(); mic = null; }
+    showMic({ state: "off", text: "", level: 0 });
     if (ctx) { ctx.close(); ctx = null; }
     setState(state, text);
   }
@@ -159,7 +161,7 @@
   function typed(text) {
     const go = () => {
       if (!ws || ws.readyState !== 1 || dock.dataset.state === "connecting") { setTimeout(go, 500); return; }
-      lastUserText = text; lastUserAt = Date.now(); out.textContent = text; touchIdle();
+      turn += 1; lastUserText = text; lastUserAt = Date.now(); out.textContent = text; touchIdle();
       send({ type: "conversation.message", role: "user", content: text });
       send({ type: "reply.create", instructions: `The captain just said: "${text.replace(/"/g, "'")}". Handle it with your tool as usual, then read the 'say' text aloud word for word.` });
     };
@@ -169,16 +171,6 @@
   window.addEventListener("pagehide", () => { if (ws) end(); });
 
   // ── Audio ───────────────────────────────────────────────────────────────
-  const WORKLET = `
-    class PcmProcessor extends AudioWorkletProcessor {
-      constructor(o) { super(); const { inputSampleRate = sampleRate, targetSampleRate = 24000, chunkMs = 50 } = o.processorOptions || {};
-        this.ratio = inputSampleRate / targetSampleRate; this.chunk = Math.round(targetSampleRate * chunkMs / 1000); this.buffer = new Int16Array(this.chunk); this.filled = 0; this.cursor = 0; }
-      process(inputs) { const input = inputs[0] && inputs[0][0]; if (!input) return true;
-        for (; this.cursor < input.length; this.cursor += this.ratio) { const s = input[Math.floor(this.cursor)]; this.buffer[this.filled++] = s < 0 ? s * 0x8000 : s * 0x7fff;
-          if (this.filled === this.chunk) { this.port.postMessage(this.buffer.buffer, [this.buffer.buffer]); this.buffer = new Int16Array(this.chunk); this.filled = 0; } }
-        this.cursor -= input.length; return true; }
-    }
-    registerProcessor("pcm-processor", PcmProcessor);`;
   function b64(buffer) {
     const bytes = new Uint8Array(buffer);
     let s = "";
@@ -215,15 +207,27 @@
     return body;
   });
   const item = () => (agenda && agenda.items[current]) || null;
-  const ask = (it) => `${it.options.map((o, i) => (i === it.options.length - 1 && it.options.length > 1 ? `or ${o}` : o)).join(", ")}?`;
-  const line = (it) => `${it.headline} ${ask(it)}`;
+  // Every line the officer speaks ends on a question, so the captain always knows it is their turn (founder, 2026-09-17).
+  // The decision questions use words router.js already understands; a plain "yes" approves.
+  const QUESTIONS = {
+    "act,defer": "Do we go for it, or park it?",
+    "acknowledge,defer": "Noted, or shall I bring it back later?",
+    "approve,reject,defer": "Shall I hand it to an agent, drop it, or park it?",
+    "run,defer": "Shall I run it now, or park it?",
+  };
+  const OPEN_QUESTIONS = ["What next, Captain?", "Where to now?", "What would you like to do with that?"];
+  let openQuestion = 0;
+  const asksSomething = (text) => /\?["”']?\s*$/.test(text);
+  const ask = (it) => QUESTIONS[it.options.join(",")] || `${it.options.join(", ").replace(/, ([^,]*)$/, ", or $1")}?`;
+  const line = (it) => (asksSomething(it.headline) ? it.headline : `${it.headline} ${ask(it)}`);
+  const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Morning" : h < 18 ? "Afternoon" : "Evening"; };
   const spoken = (it) => (it ? { key: it.key, rank: it.rank, kind: it.kind, ship: it.ship || undefined, headline: it.headline, options: it.options } : null);
   async function loadAgenda() { agenda = await api("/agenda"); current = 0; return agenda; }
   async function openWatch() {
     try { await loadAgenda(); } catch (err) { sayExactly(`Captain, I could not load the agenda: ${err.message}. Ask me about a ship instead.`); return; }
     interruptsSince = agenda.generated || new Date().toISOString();
     const first = item();
-    if (first) { showFor(first.ui); sayExactly(`Captain, ${agenda.items.length} item${agenda.items.length === 1 ? "" : "s"} on the agenda. First: ${line(first)}`); }
+    if (first) { showFor(first.ui); sayExactly(globalThis.officerForEar(`${greeting()}, Captain. ${agenda.items.length === 1 ? "One thing wants" : `${agenda.items.length} things want`} your call. First: ${line(first)}`)); }
     else sayExactly("Captain, the agenda is clear. Which ship shall we look at?");
     clearInterval(interruptTimer);
     interruptTimer = setInterval(pollInterrupts, INTERRUPT_EVERY_MS);
@@ -237,7 +241,7 @@
     interruptsSince = fresh[fresh.length - 1].ts || body.now || interruptsSince;
     if (userSpeaking) return; // the captain started talking meanwhile; it comes round again
     if (fresh[0].ship) showFor({ ship: fresh[0].ship });
-    sayExactly(`Captain, ${fresh.map((f) => f.say).join(" ")} Shall I act on it, or carry on?`);
+    sayExactly(globalThis.officerForEar(`Captain, ${fresh.map((f) => f.say).join(" ")} Shall I act on it, or carry on?`));
   }
   function showFor(ui) {
     if (!ui) return;
@@ -245,8 +249,8 @@
       if (ui.ship && findShip(ui.ship)) { TOOLS.open_ship({ ship: ui.ship }); return; }
       if (!ui.panel) return;
       const target = document.getElementById(`${ui.panel}-title`) || document.querySelector(`[data-search-keywords*="${ui.panel}"]`) || document.getElementById(ui.panel);
-      if (target) { showFleet(); target.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
-      TOOLS.navigate({ target: ui.panel });
+      if (target) { showFleet(); target.scrollIntoView({ block: "start", behavior: "smooth" }); }
+      // No such panel on this page (the judges' snapshot scrubs some): stay put. Guessing a control to click once left the page mid-watch.
     } catch { /* the cockpit following is best effort */ }
   }
   async function askOfficer(question) {
@@ -256,7 +260,8 @@
     try {
       const it = item();
       const ship = globalThis.officerShipWord(question) || (it && it.ship) || "";
-      const body = await api("/ask", { method: "POST", body: JSON.stringify({ question, ship, item: it ? { key: it.key, headline: it.headline } : null }) });
+      const card = ship && findShip(ship);
+      const body = await api("/ask", { method: "POST", body: JSON.stringify({ question, ship, facts: card ? shipFacts(card) : null, item: it ? { key: it.key, headline: it.headline } : null }) });
       pendingProposal = body.proposal || null;
       if (ship && findShip(ship)) showFor({ ship });
       return { say: `${body.say}${pendingProposal ? ` ${pendingProposal.ask || "Shall I?"}` : ""}`, skill: body.skill, proposal: pendingProposal };
@@ -270,13 +275,29 @@
   function runTool(ev) {
     Promise.resolve()
       .then(() => (ev.name === "captain_said" ? captainSaid(ev.arguments || {}) : { error: `Unknown tool ${ev.name}.` }))
-      .catch((err) => ({ error: String(err.message || err), say: `I hit a problem: ${String(err.message || err)}. Say that again, or ask for the brief.` }))
+      .catch((err) => ({ error: String(err.message || err), say: `I hit a problem: ${String(err.message || err)}. Would you say that again?` }))
       // Sent the moment the tool returns; measured 2026-09-03 the server accepts it during the reply and answers ~2.3 s sooner.
-      .then((result) => send({ type: "tool.result", call_id: ev.call_id, result: JSON.stringify(result), is_error: Boolean(result && result.error) }));
+      // The model gets the line and nothing else: it reads, it does not think, and every extra field is a reason to improvise.
+      .then((result) => send({ type: "tool.result", call_id: ev.call_id, result: JSON.stringify(result.error ? { error: result.error, say: result.say } : { say: result.say }), is_error: Boolean(result.error) }));
   }
   async function captainSaid({ text }) {
+    // A proactive line the model routed through the tool instead of saying it: hand it straight back. The captain has not
+    // spoken since it was issued (every utterance bumps `turn` before its tool call), so these words cannot be theirs;
+    // routing them once parked the first agenda item off the officer's own "…or park it?" (2026-09-17).
+    if (pendingSay && pendingTurn === turn) { const say = pendingSay; pendingSay = ""; return { say }; }
+    if (answered.turn === turn) return answered.result; // same utterance, second call: same answer, nothing acted on twice
+    const result = answer(text).then(forTheEar);
+    answered = { turn, result };
+    return result;
+  }
+  // The last word on every line: written for the ear, and ending on a question.
+  function forTheEar(result) {
+    let say = globalThis.officerForEar(result.say || "");
+    if (say && !asksSomething(say)) say = `${say} ${OPEN_QUESTIONS[openQuestion++ % OPEN_QUESTIONS.length]}`;
+    return { ...result, say };
+  }
+  async function answer(text) {
     const fresh = Date.now() - lastUserAt < 15000 && lastUserText;
-    if (pendingSay && !fresh) { const say = pendingSay; pendingSay = ""; return { say }; }
     const words = fresh ? lastUserText : String(text || "");
     const r = globalThis.officerRoute(words);
     if (!agenda && r.intent !== "open") { try { await loadAgenda(); } catch {} }
@@ -430,5 +451,5 @@
       return { done: `Opened ${label(best)}.`, ...describeState() };
     },
   };
-  window.voiceTools = { ...TOOLS, route: (t) => captainSaid({ text: t }), loadAgenda }; // console: voiceTools.route("why?")
+  window.voiceTools = { ...TOOLS, route: (t) => { turn += 1; lastUserText = t; lastUserAt = Date.now(); return captainSaid({ text: t }); }, loadAgenda }; // console: voiceTools.route("why?")
 })();

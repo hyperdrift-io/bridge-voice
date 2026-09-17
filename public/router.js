@@ -22,9 +22,9 @@
     [/^(why|how come|explain|what('s| is) the (evidence|reason)|because)\b/, () => ({ intent: "why" })],
     [/\b(brief(ing)?|summary|summar(ise|ize)|overview|what('s| is) on the agenda|the agenda)\b/, () => ({ intent: "brief" })],
     [/^(next|skip( it| that)?|move on|what else|go on|carry on)\b/, () => ({ intent: "next" })],
-    [/^(yes|yeah|yep|do it|go ahead|approve(d)?|confirm(ed)?|ok(ay)?|sure|run( it)?|ship it|make it so|act( on it)?)\b/, () => ({ intent: "decide", decision: "approve" })],
+    [/^(yes|yeah|yep|do it|go ahead|approve(d)?|confirm(ed)?|ok(ay)?|sure|run( it)?|ship it|make it so|act( on it)?|go for it|let's go|hand it (over|to an agent)|build it)\b/, () => ({ intent: "decide", decision: "approve" })],
     [/^(no|nope|reject(ed)?|drop( it| that)?|don't|do not|kill it|leave it)\b/, () => ({ intent: "decide", decision: "reject" })],
-    [/\b(park( it| that)?|defer|later|not now|not yet|hold( it| that)?|remind me)\b/, () => ({ intent: "decide", decision: "defer" })],
+    [/\b(park( it| that)?|defer|later|not now|not yet|hold( it| that)?|remind me|bring it back)\b/, () => ({ intent: "decide", decision: "defer" })],
     [/^(noted|acknowledged?|ack|understood|got it|thanks|thank you)\b/, () => ({ intent: "decide", decision: "acknowledge" })],
     [/\b(commands?|command palette|palette|shortcuts?)\b/, (t) => ({ intent: "navigate", target: t.includes("search") ? t : "commands" })],
     [/^(search( for)?|find|look up) (.+)/, (t, m) => ({ intent: "navigate", target: `search ${m[3]}` })],
@@ -49,6 +49,21 @@
     return { intent: "free", text };
   }
 
+  // The officer's mouth: a line written for a screen, made sayable. Dates a person would say, no symbols to stumble on.
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  function forEar(text, today = new Date()) {
+    return String(text || "")
+      .replace(/\b(\d{4})-(\d{2})-(\d{2})(?:T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?/g, (m, y, mo, d) => (MONTHS[mo - 1] ? `${Number(d)} ${MONTHS[mo - 1]}${Number(y) === today.getFullYear() ? "" : ` ${y}`}` : m))
+      .replace(/\s*[·•|]\s*/g, ", ")
+      .replace(/\s*(→|->|=>)\s*/g, " to ")
+      .replace(/\((s|es)\)/g, "$1")
+      .replace(/[`*_#]+/g, "")
+      .replace(/\s+([,.;:?!])/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   globalThis.officerRoute = route;
+  globalThis.officerForEar = forEar;
   globalThis.officerShipWord = findShipWord;
 })();
