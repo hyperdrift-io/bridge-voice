@@ -33,11 +33,11 @@
     } catch (err) {
       if (stream) stream.getTracks().forEach((t) => t.stop());
       report("blocked", BLOCKED[err.name] || `The microphone did not open (${err.name}: ${err.message}). ${TYPE}`);
-      return { close() {}, note() {} };
+      return { close() {}, note() {}, spoke: () => 0 };
     }
     const label = track.label || "microphone";
     const started = performance.now();
-    let lastChunk = started, lastSound = 0, peakNow = 0, loudSince = 0, quietSince = started, speechAt = 0, heard = "", heardAt = 0, officer = false;
+    let lastChunk = started, lastSound = 0, peakNow = 0, loudSince = 0, quietSince = started, speechAt = 0, heard = "", heardAt = 0, officer = false, run = { ms: 0, endedAt: 0 };
     const worklet = new AudioWorkletNode(ctx, "pcm-processor", { processorOptions: { inputSampleRate: ctx.sampleRate, targetSampleRate: rate } });
     ctx.createMediaStreamSource(stream).connect(worklet);
     worklet.connect(ctx.destination); // it writes no output; the connection keeps every browser pulling the node
@@ -56,7 +56,7 @@
       health.level = Math.min(1, Math.sqrt(peakNow));
       const loud = peakNow > LOUD;
       peakNow = 0;
-      if (loud) { if (!loudSince) loudSince = now; quietSince = 0; } else if (!quietSince) quietSince = now; else if (now - quietSince > 600) loudSince = 0;
+      if (loud) { if (!loudSince) loudSince = now; quietSince = 0; run = { ms: now - loudSince, endedAt: now }; } else if (!quietSince) quietSince = now; else if (now - quietSince > 600) loudSince = 0;
       if (ctx.state === "suspended") ctx.resume();
       if (track.readyState === "ended") report("stalled", `The ${label} went away. Reopen the watch to pick it up again. ${TYPE}`);
       else if (now - lastChunk > 1500) report("stalled", `No audio is leaving the browser: its audio engine is paused. Click the page once, or reopen the watch. ${TYPE}`);
@@ -72,6 +72,7 @@
       // voice.js tells the mic what the service did with the audio: "speech" (it detected a voice), "heard" (a final transcript),
       // and "officer" (true while the officer is talking).
       note(what, text) { if (what === "officer") officer = Boolean(text); if (what === "speech") speechAt = performance.now(); if (what === "heard") { heard = text; heardAt = performance.now(); speechAt = heardAt; loudSince = 0; } },
+      spoke(withinMs) { return performance.now() - run.endedAt < withinMs ? run.ms : 0; }, // how long the captain's last loud stretch lasted, if it ended recently
       close() { clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); try { worklet.disconnect(); } catch {} },
     };
   }

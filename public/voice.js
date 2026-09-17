@@ -22,6 +22,7 @@
       "You are the First Officer of the Hyperdrift Bridge. You report to the captain, who runs a small fleet of live apps.",
       "For everything the captain says, call captain_said with their words, exactly once per thing they say, then say the result's 'say' text word for word and nothing else.",
       "Once captain_said has returned, never call it again until the captain speaks again. Just read the 'say' text.",
+      "Never repeat a line you have already said, and never answer from memory. If you cannot call captain_said, say only: Say that again, Captain?",
       "If the result has no 'say' but has 'context', answer from the context in two short sentences, opinion first.",
       "When an instruction tells you to say something exactly, say exactly that.",
       "Never speak a tool name, its arguments, brackets or code. Only the 'say' text.",
@@ -84,7 +85,8 @@
   let playing = [];
   let idleTimer = null;
   let agenda = null;
-  let current = 0;
+  let watch = null; // the conversation (watch.js)
+  let closing = false; // true once the captain said goodbye, "said" once the farewell was spoken; then the session ends
   let userSpeaking = false;
   let lastUserText = "";
   let lastUserAt = 0;
@@ -118,13 +120,13 @@
         switch (ev.type) {
           case "session.ready": ready = true; playhead = 0; setState("listening", ""); touchIdle(); openWatch(); break;
           case "input.speech.started": userSpeaking = true; if (mic) mic.note("speech"); touchIdle(); setState("listening"); break;
-          case "input.speech.stopped": userSpeaking = false; break;
+          case "input.speech.stopped": userSpeaking = false; watchLostWords(turn); break;
           case "transcript.user.delta": out.textContent = ev.text; break;
           case "transcript.user": userSpeaking = false; turn += 1; lastUserText = ev.text; lastUserAt = Date.now(); if (mic) mic.note("heard", ev.text); out.textContent = ev.text; break;
           case "reply.started": if (mic) mic.note("officer", true); if (dock.dataset.state !== "thinking") setState("speaking"); break;
           case "reply.audio": play(ev.data); break;
-          case "transcript.agent": out.textContent = ev.text; break;
-          case "reply.done": if (mic) mic.note("officer", false); pendingSay = ""; if (ev.status === "interrupted") flush(); if (dock.dataset.state !== "thinking") setState("listening"); break;
+          case "transcript.agent": out.textContent = ev.text; if (closing && /fair winds/i.test(ev.text)) closing = "said"; break; // the farewell has been spoken: the next reply.done ends the session
+          case "reply.done": if (mic) mic.note("officer", false); pendingSay = ""; if (closing === "said") { closing = false; setTimeout(() => end("Watch closed. Fair winds."), ctx ? Math.max(0, playhead - ctx.currentTime) * 1000 + 400 : 400); break; } if (ev.status === "interrupted") flush(); if (dock.dataset.state !== "thinking") setState("listening"); break;
           case "tool.call": runTool(ev); break;
           case "session.error": console.error("session.error", ev); if (!ready) teardown(`${ev.code}: ${ev.message}`); else out.textContent = ev.message; break;
           case "session.ended": teardown("Watch ended.", "ended"); break;
@@ -203,32 +205,24 @@
   // ── The watch ───────────────────────────────────────────────────────────
   const api = (path, init) => fetch(`${API}${path}`, { headers: { "Content-Type": "application/json" }, ...init }).then(async (r) => {
     const body = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(body.error || `${path} ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(body.error || `${path} ${r.status}`), { status: r.status, body });
     return body;
   });
-  const item = () => (agenda && agenda.items[current]) || null;
-  // Every line the officer speaks ends on a question, so the captain always knows it is their turn (founder, 2026-09-17).
-  // The decision questions use words router.js already understands; a plain "yes" approves.
-  const QUESTIONS = {
-    "act,defer": "Do we go for it, or park it?",
-    "acknowledge,defer": "Noted, or shall I bring it back later?",
-    "approve,reject,defer": "Shall I hand it to an agent, drop it, or park it?",
-    "run,defer": "Shall I run it now, or park it?",
-  };
+  // The conversation lives in watch.js (pure, tested offline): the officer offers, the captain chooses, short turns.
   const OPEN_QUESTIONS = ["What next, Captain?", "Where to now?"];
   let openQuestion = 0;
   const asksSomething = (text) => /\?["”']?\s*$/.test(text);
-  const ask = (it) => QUESTIONS[it.options.join(",")] || `${it.options.join(", ").replace(/, ([^,]*)$/, ", or $1")}?`;
-  const line = (it) => (asksSomething(it.headline) ? it.headline : `${it.headline} ${ask(it)}`);
-  const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Morning" : h < 18 ? "Afternoon" : "Evening"; };
-  const spoken = (it) => (it ? { key: it.key, rank: it.rank, kind: it.kind, ship: it.ship || undefined, headline: it.headline, options: it.options } : null);
-  async function loadAgenda() { agenda = await api("/agenda"); current = 0; return agenda; }
+  async function loadAgenda() {
+    agenda = await api("/agenda");
+    watch = globalThis.officerWatch.create(agenda, { decide: (key, decision, note) => api("/decide", { method: "POST", body: JSON.stringify({ key, decision, note }) }) });
+    return agenda;
+  }
   async function openWatch() {
-    try { await loadAgenda(); } catch (err) { sayExactly(`Captain, I could not load the agenda: ${err.message}. Ask me about a ship instead.`); return; }
+    try { await loadAgenda(); } catch (err) { sayExactly(`Captain, I could not load the agenda: ${err.message}. Would you ask me about a ship instead?`); return; }
     interruptsSince = agenda.generated || new Date().toISOString();
-    const first = item();
-    if (first) { showFor(first.ui); sayExactly(globalThis.officerForEar(`${greeting()}, Captain. ${agenda.items.length === 1 ? "One thing wants" : `${agenda.items.length} things want`} your call. First: ${line(first)}`)); }
-    else sayExactly("Captain, the agenda is clear. Which ship shall we look at?");
+    const opening = watch.open();
+    showFor(opening.ui);
+    sayExactly(globalThis.officerForEar(opening.say));
     clearInterval(interruptTimer);
     interruptTimer = setInterval(pollInterrupts, INTERRUPT_EVERY_MS);
   }
@@ -258,12 +252,14 @@
     let n = 0;
     const ticker = setInterval(() => { if (n < THINKING_LINES.length) sayExactly(THINKING_LINES[n++]); }, 9000);
     try {
-      const it = item();
-      const ship = globalThis.officerShipWord(question) || (it && it.ship) || "";
+      const state = watch ? watch.state() : {};
+      const ship = globalThis.officerShipWord(question) || "";
       const card = ship && findShip(ship);
-      const body = await api("/ask", { method: "POST", body: JSON.stringify({ question, ship, facts: card ? shipFacts(card) : null, item: it ? { key: it.key, headline: it.headline } : null }) });
+      const body = await api("/ask", { method: "POST", body: JSON.stringify({ question, ship, facts: card ? shipFacts(card) : null, fleet: card ? null : TOOLS.read_commander({}), state }) });
+      // The brain may recognise an order said in words the router does not know ("let's leave that one for now"): it comes back as an intent.
+      if (body.intent && watch) { const heard = await watch.hear({ intent: body.intent, decision: body.decision, text: question }); if (heard) { showFor(heard.ui); return heard; } }
       pendingProposal = body.proposal || null;
-      if (ship && findShip(ship)) showFor({ ship });
+      if (card) showFor({ ship });
       return { say: `${body.say}${pendingProposal ? ` ${pendingProposal.ask || "Shall I?"}` : ""}`, skill: body.skill, proposal: pendingProposal };
     } finally {
       clearInterval(ticker);
@@ -280,6 +276,18 @@
       // The model gets the line and nothing else: it reads, it does not think, and every extra field is a reason to improvise.
       .then((result) => send({ type: "tool.result", call_id: ev.call_id, result: JSON.stringify(result.error ? { error: result.error, say: result.say } : { say: result.say }), is_error: Boolean(result.error) }));
   }
+  // A turn can get lost when the captain speaks over the tail of the officer's line: the service drops the words
+  // (speech.stopped, never a transcript; seen 2026-09-18). A person would say "sorry, I talked over you". So does the officer,
+  // but only into silence: a reply.create queues behind a reply in progress and cannot cancel it (measured the same night:
+  // a watchdog that muted an improvised reply and queued the right line left the captain in 13 s of silence; removed).
+  let sorryAt = 0;
+  function watchLostWords(t) {
+    setTimeout(() => {
+      if (!ws || turn !== t || userSpeaking || dock.dataset.state !== "listening" || !mic || mic.spoke(4000) < 350 || Date.now() - sorryAt < 15000) return;
+      sorryAt = Date.now();
+      sayExactly("Sorry, Captain, I was still talking. Say that again?");
+    }, 1300);
+  }
   async function captainSaid({ text }) {
     // A proactive line the model routed through the tool instead of saying it: hand it straight back. The captain has not
     // spoken since it was issued (every utterance bumps `turn` before its tool call), so these words cannot be theirs;
@@ -293,27 +301,42 @@
   // The last word on every line: written for the ear, and ending on a question.
   function forTheEar(result) {
     let say = globalThis.officerForEar(result.say || "");
-    if (say && !asksSomething(say)) say = `${say} ${OPEN_QUESTIONS[openQuestion++ % OPEN_QUESTIONS.length]}`;
+    if (say && !asksSomething(say) && !result.close) say = `${say} ${OPEN_QUESTIONS[openQuestion++ % OPEN_QUESTIONS.length]}`; // a farewell is the one line that asks nothing
     return { ...result, say };
   }
   async function answer(text) {
     const fresh = Date.now() - lastUserAt < 15000 && lastUserText;
     const words = fresh ? lastUserText : String(text || "");
     const r = globalThis.officerRoute(words);
-    if (!agenda && r.intent !== "open") { try { await loadAgenda(); } catch {} }
+    if (!watch) { try { await loadAgenda(); } catch {} }
+    if (r.intent === "open") { await openWatch(); return { say: "" }; }
+    // A proposal lives for exactly one reply: "yes" takes it, anything else lets it go. Left hanging, it once swallowed
+    // "hand them all over" meant for the fixes on the table (2026-09-18).
+    const proposal = pendingProposal; pendingProposal = null;
+    if (proposal && r.intent === "decide") {
+      if (r.decision === "approve") { pendingProposal = proposal; return acceptProposal(); }
+      if (watch) return watch.hear({ intent: "thanks" }).then((h) => ({ ...h, say: h.say.replace(/^Any time\./, "Understood.") }));
+    }
+    // A bare ship name while a set of ships is on the table is a choice, not a cockpit order.
+    const bare = words.trim().split(/\s+/).length <= 2;
+    const cockpit = ["open_ship", "read", "navigate"].includes(r.intent) && !(r.intent === "open_ship" && bare && watch && /ships/.test(String(watch.state().focus || "")));
+    if (!cockpit && watch) {
+      const heard = await watch.hear(r.intent === "open_ship" ? { ...r, intent: "free" } : r);
+      if (heard) { showFor(heard.ui); if (heard.close) closing = true; return heard; }
+    }
     switch (r.intent) {
-      case "open": await openWatch(); return { say: "" };
-      case "why": return TOOLS.why();
-      case "next": return TOOLS.next_item();
-      case "brief": return TOOLS.brief();
-      case "decide":
-        if (pendingProposal && r.decision === "approve") return acceptProposal();
-        if (pendingProposal && r.decision === "reject") { pendingProposal = null; return { say: `Understood. ${item() ? `We are on: ${line(item())}` : ""}` }; }
-        return TOOLS.decide({ decision: r.decision, note: words });
       case "open_ship": { const f = TOOLS.open_ship({ ship: r.ship }); return f.error ? { say: f.error } : { ...f, say: shipLine(f) }; }
       case "read": { const f = TOOLS.read_commander({ ship: r.ship }); return f.error ? { say: f.error } : { ...f, say: readLine(f) }; }
       case "navigate": { const f = TOOLS.navigate({ target: r.target }); return { ...f, say: f.error || f.done }; }
-      default: return askOfficer(words);
+      default: {
+        // The brain is for real questions. A few stray words get the choices again, at once, instead of a slow guess.
+        const question = /\?\s*$/.test(words) || /^(is|are|what|how|should|can|could|do|does|did|will|would|when|where|who|why|which|tell me|explain)\b/i.test(words.trim()) || words.trim().split(/\s+/).length >= 5;
+        if (!question && watch) return watch.hear({ intent: "unclear" });
+        try { return await askOfficer(words); } catch (err) {
+          if (!watch) throw err;
+          return watch.hear(err.status === 429 ? { intent: "busy", seconds: err.body.retry_after } : { intent: "unclear" });
+        }
+      }
     }
   }
   async function acceptProposal() {
@@ -371,39 +394,6 @@
   }
 
   const TOOLS = {
-    async why() {
-      const it = item();
-      if (!it) return { say: "The agenda is clear; there is nothing to explain." };
-      showFor(it.ui);
-      return { item: spoken(it), why: it.why, say: `${it.why.length ? it.why.join(" ") : "No evidence is attached to this item."} ${ask(it)}` };
-    },
-    async decide({ decision, note } = {}) {
-      const it = item();
-      if (!it) return { say: "There is no item to decide on. Ask me for the brief." };
-      const body = await api("/decide", { method: "POST", body: JSON.stringify({ key: it.key, decision, note: note || "" }) });
-      agenda.items = agenda.items.filter((i) => i.key !== it.key);
-      current = Math.min(current, Math.max(0, agenda.items.length - 1));
-      const next = item();
-      if (next) showFor(next.ui);
-      return { decided: it.headline, decision: body.decision, done: body.done, job: body.job, next: spoken(next), remaining: agenda.items.length,
-               say: `${body.done} ${next ? `Next: ${line(next)}` : "That was the last item. The agenda is clear."}` };
-    },
-    async next_item() {
-      if (!agenda || !agenda.items.length) return { next: null, say: "The agenda is clear." };
-      current = (current + 1) % agenda.items.length;
-      const it = item();
-      showFor(it.ui);
-      return { next: spoken(it), remaining: agenda.items.length, say: `Next: ${line(it)}` };
-    },
-    async brief() {
-      if (!agenda) return { say: "I have no agenda loaded. Say 'start over'." };
-      const counts = {};
-      agenda.items.forEach((i) => { counts[i.kind] = (counts[i.kind] || 0) + 1; });
-      const fleet = TOOLS.read_commander({});
-      const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}${n === 1 ? "" : "s"}`).join(", ");
-      return { total: agenda.items.length, by_kind: counts, top: agenda.items.slice(0, 3).map(spoken), current: spoken(item()),
-               say: `${agenda.items.length} items: ${kinds}. Fleet: ${fleet.visitors || "no"} visitors, ${fleet.conversions || "no"} conversions. ${item() ? `We are on: ${line(item())}` : ""}` };
-    },
     open_ship({ ship }) {
       const card = findShip(ship);
       if (!card) return { error: `No ship called '${ship}'. Ships: ${ships().map((s) => s.dataset.app).join(", ")}.` };

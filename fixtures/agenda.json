@@ -17,7 +17,7 @@
     "act",
     "defer"
    ],
-   "default": "defer",
+   "default": "act",
    "urgency": 60,
    "ui": {
     "panel": "contests"
@@ -26,7 +26,9 @@
     "contest:lablab-ai-assemblyai-voice-agent-hackathon"
    ],
    "topic": "lablab.ai AssemblyAI Voice Agent Hackathon",
-   "rank": 1
+   "rank": 1,
+   "short": "the voice hackathon deadline",
+   "rationale": "The only open step is a quick check on your side, and the entry closes 2026-09-30."
   },
   {
    "key": "heal:app-context",
@@ -59,7 +61,8 @@
     "bea45a136124",
     "739086d8882f"
    ],
-   "rank": 2
+   "rank": 2,
+   "short": "nine agent-guide fixes"
   },
   {
    "key": "heal:skill-routing",
@@ -84,7 +87,8 @@
     "3e0575a980b0",
     "d8110a568d4f"
    ],
-   "rank": 3
+   "rank": 3,
+   "short": "two skill-routing fixes"
   },
   {
    "key": "read:hyper-cv:run",
