@@ -1,6 +1,14 @@
-node_modules
+# `gcloud run deploy --source .` falls back to .gitignore without this file, and .gitignore hides public/index.html
+# (the snapshot stays out of git until the founder approves the scrub). The upload needs it; it never needs the key.
+.git
+.gitignore
 .env
 .env.*
-dist
-public/index.html
+node_modules/
+dist/
+src/
+docs/
+pnpm-lock.yaml
+pnpm-workspace.yaml
 *.log
+.DS_Store

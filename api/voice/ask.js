@@ -18,6 +18,15 @@ const GUIDES = {
   ops: "Say what is broken, what the fix is, and whether an agent can do it safely without the captain.",
 };
 export const accepted = [];
+const PER_IP_PER_HOUR = 40; // a public endpoint in front of a paid model: a watch asks a handful of questions, not hundreds
+const hits = new Map();
+function allowed(req) {
+  const ip = (req.headers?.["x-forwarded-for"] || "").split(",")[0].trim() || req.socket?.remoteAddress || "?";
+  const now = Date.now();
+  const recent = (hits.get(ip) || []).filter((t) => now - t < 3600000);
+  hits.set(ip, [...recent, now]);
+  return recent.length < PER_IP_PER_HOUR;
+}
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -28,7 +37,8 @@ export default async function handler(req, res) {
     res.status(200).json({ ok: true, kind: p.kind, say: `Logged as a ${p.kind === "mission" ? "mission" : "note"} for ${p.ship || "the fleet"}: ${p.title}. On the live fleet this lands in the ship's notebook.` });
     return;
   }
-  const question = String(req.body?.question || "").trim();
+  if (!allowed(req)) { res.status(429).json({ ok: false, error: "too many questions from this address", say: "I have answered a lot of questions from here in the last hour. Shall we go back to the agenda?" }); return; }
+  const question = String(req.body?.question || "").trim().slice(0, 400);
   if (!question) { res.status(400).json({ ok: false, error: "question is required" }); return; }
   const ship = String(req.body?.ship || "").toLowerCase();
   const skill = (RULES.find(([re]) => re.test(question.toLowerCase())) || [null, "strategist"])[1];

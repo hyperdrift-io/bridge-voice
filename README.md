@@ -45,6 +45,19 @@ cd - && npm run build:demo -- /tmp/bridge.html --reads ~/dev/hyperdrift/.nightcr
 The build scrubs private surfaces and prints a report. `public/index.html` is
 the frozen result and stays out of git until the founder has read that report.
 
+## Deploy for judges
+
+Only after the founder has read the scrub report and approved the snapshot (`AGENTS.md`). One container serves the
+page, the officer's files and `/api/voice/*`; sessions stay capped at 300 s and the key stays server-side.
+
+```bash
+gcloud run deploy bridge-voice --source . --region europe-west1 --allow-unauthenticated \
+  --max-instances 2 --set-env-vars ASSEMBLYAI_API_KEY=… --project <project>
+```
+
+`.gcloudignore` keeps `.env` out of the upload and lets the gitignored `public/index.html` in. Then run the
+spoken-path gate against the public URL from a browser that has never seen the page.
+
 ## Layout
 
 ```
