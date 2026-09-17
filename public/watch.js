@@ -139,8 +139,45 @@
       }
     }
 
-    return { open: () => menu(true), hear, state: () => ({ focus: focus && (focus.item ? focus.item.headline : focus.topic.label), options: focus ? (focus.item || focus.topic.items[0]).options : topics().map((t) => t.label), last, remaining: items.length }) };
+    // The order of the whole turn, in one place, because two callers must agree on it word for word: the island in the
+    // browser and the officer-as-LLM endpoint (api/voice/llm.js) that replays the same utterances. `proposal` says the
+    // officer's last line ended on a proposal from the brain; it lives for exactly one reply ("yes" takes it, anything else
+    // lets it go; left hanging it once swallowed "hand them all over" meant for the fixes on the table).
+    async function converse(words, { proposal = false } = {}) {
+      const r = globalThis.officerRoute(words);
+      if (r.intent === "open") return { kind: "watch", ...menu(true) };
+      if (proposal && r.intent === "decide") {
+        if (r.decision === "approve") return { kind: "proposal-yes" };
+        const again = await hear({ intent: "thanks" });
+        return { kind: "watch", ...again, say: again.say.replace(/^Any time\./, "Understood.") };
+      }
+      // A bare ship name while a set of ships is on the table is a choice, not a cockpit order.
+      const bare = words.trim().split(/\s+/).length <= 2;
+      const shipsOnTable = focus && !focus.item && focus.topic.kind === "read";
+      const cockpit = ["open_ship", "read", "navigate"].includes(r.intent) && !(r.intent === "open_ship" && bare && shipsOnTable);
+      if (!cockpit) {
+        const heard = await hear(r.intent === "open_ship" ? { ...r, intent: "free" } : r);
+        if (heard) return { kind: "watch", ...heard };
+      }
+      if (["open_ship", "read", "navigate"].includes(r.intent)) return { kind: "cockpit", route: r };
+      // The brain is for real questions. A few stray words get the choices again, at once, instead of a slow guess.
+      const question = /\?\s*$/.test(words) || /^(is|are|what|how|should|can|could|do|does|did|will|would|when|where|who|why|which|tell me|explain)\b/i.test(words.trim()) || words.trim().split(/\s+/).length >= 5;
+      return question ? { kind: "question", words, ship: globalThis.officerShipWord(norm(words)) } : { kind: "watch", ...(await hear({ intent: "unclear" })) };
+    }
+
+    return { open: () => menu(true), hear, converse, state: () => ({ focus: focus && (focus.item ? focus.item.headline : focus.topic.label), options: focus ? (focus.item || focus.topic.items[0]).options : topics().map((t) => t.label), last, remaining: items.length }) };
   }
 
-  globalThis.officerWatch = { create };
+  // What the officer says about a ship, from the cockpit's own facts (the island reads them off the page; the LLM endpoint gets them handed over).
+  const RANKS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+  const shipLine = (f) => {
+    const rank = RANKS[Number(String(f.position || "").replace("#", "")) - 1];
+    return `${f.ship} ${rank ? `is ranked ${rank}` : "is unranked"}, at the ${f.stage} stage${f.visitors ? `, with ${f.visitors} visitors` : ""}.${f.constraint ? ` What holds it back is ${f.constraint}.` : ""} ${f.read_line || ""}`.trim();
+  };
+  const readLine = (f) => `${f.ship}: ${f.read_line || ""} ${f.last_read ? `Last read ${f.last_read.date}: ${f.last_read.verdict}. ${f.last_read.pragmatic}` : "No recorded read yet."}`;
+
+  // Does this line end on the brain's proposal ("Shall I run the read now?")? Both sides of the own-LLM path ask the same way.
+  const proposes = (line) => /^(shall i|should i|want me to|do you want me to)\b/i.test(((String(line).match(/[^.?!]+[.?!]+\s*$/) || [""])[0]).trim());
+
+  globalThis.officerWatch = { create, shipLine, readLine, proposes };
 })();

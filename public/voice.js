@@ -86,6 +86,8 @@
   let idleTimer = null;
   let agenda = null;
   let watch = null; // the conversation (watch.js)
+  let agentId = null; // set when the host binds us to the stored agent whose model is the officer itself (api/voice/llm.js)
+  let mirrorAsked = false, lastAgentLine = ""; // own-LLM mode: the island only mirrors the conversation so the cockpit can follow
   let closing = false; // true once the captain said goodbye, "said" once the farewell was spoken; then the session ends
   let userSpeaking = false;
   let lastUserText = "";
@@ -99,20 +101,23 @@
   let pendingSay = ""; // a proactive line; if the model routes it through the tool instead of saying it, the tool hands it back
 
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
-  const sayExactly = (text) => { pendingSay = text; pendingTurn = turn; send({ type: "reply.create", instructions: `Say exactly: "${text.replace(/"/g, "'")}"` }); };
+  const sayExactly = (text) => {
+    if (agentId) { send({ type: "conversation.message", role: "system", content: `OFFICER_SAY ${text}` }); send({ type: "reply.create" }); return; }
+    pendingSay = text; pendingTurn = turn; send({ type: "reply.create", instructions: `Say exactly: "${text.replace(/"/g, "'")}"` });
+  };
   const touchIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => end("Watch ended after two quiet minutes."), IDLE_MS); };
 
   async function start() {
     setState("connecting", "");
     try {
-      const token = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); }).then((j) => j.token);
+      const token = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); }).then((j) => { agentId = j.agent_id || null; return j.token; });
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       let ready = false;
       if (!TEXT_ONLY) mic = await globalThis.officerMic.open({ ctx, rate: SAMPLE_RATE, onHealth: showMic, onChunk: (pcm) => { if (ready) send({ type: "input.audio", audio: b64(pcm) }); } });
       const url = new URL(WS_URL);
       url.searchParams.set("token", token);
       ws = new WebSocket(url);
-      ws.onopen = () => send({ type: "session.update", session: SESSION });
+      ws.onopen = () => send({ type: "session.update", session: agentId ? { agent_id: agentId } : SESSION });
       ws.onclose = (e) => { if (dock.dataset.state !== "ended") teardown(e.code === 1006 ? "Connection refused — token expired or invalid." : "Connection closed."); };
       ws.onerror = () => teardown("Connection error.");
       ws.onmessage = ({ data }) => {
@@ -122,10 +127,10 @@
           case "input.speech.started": userSpeaking = true; if (mic) mic.note("speech"); touchIdle(); setState("listening"); break;
           case "input.speech.stopped": userSpeaking = false; watchLostWords(turn); break;
           case "transcript.user.delta": out.textContent = ev.text; break;
-          case "transcript.user": userSpeaking = false; turn += 1; lastUserText = ev.text; lastUserAt = Date.now(); if (mic) mic.note("heard", ev.text); out.textContent = ev.text; break;
+          case "transcript.user": userSpeaking = false; turn += 1; lastUserText = ev.text; lastUserAt = Date.now(); if (mic) mic.note("heard", ev.text); out.textContent = ev.text; if (agentId) answer(ev.text, { mirror: true }).catch(() => {}); break;
           case "reply.started": if (mic) mic.note("officer", true); if (dock.dataset.state !== "thinking") setState("speaking"); break;
           case "reply.audio": play(ev.data); break;
-          case "transcript.agent": out.textContent = ev.text; if (closing && /fair winds/i.test(ev.text)) closing = "said"; break; // the farewell has been spoken: the next reply.done ends the session
+          case "transcript.agent": out.textContent = ev.text; lastAgentLine = ev.text; if (closing && /fair winds/i.test(ev.text)) closing = "said"; break; // the farewell has been spoken: the next reply.done ends the session
           case "reply.done": if (mic) mic.note("officer", false); pendingSay = ""; if (closing === "said") { closing = false; setTimeout(() => end("Watch closed. Fair winds."), ctx ? Math.max(0, playhead - ctx.currentTime) * 1000 + 400 : 400); break; } if (ev.status === "interrupted") flush(); if (dock.dataset.state !== "thinking") setState("listening"); break;
           case "tool.call": runTool(ev); break;
           case "session.error": console.error("session.error", ev); if (!ready) teardown(`${ev.code}: ${ev.message}`); else out.textContent = ev.message; break;
@@ -222,7 +227,10 @@
     interruptsSince = agenda.generated || new Date().toISOString();
     const opening = watch.open();
     showFor(opening.ui);
-    sayExactly(globalThis.officerForEar(opening.say));
+    if (agentId) { // the officer is the model: hand it the cockpit's facts once, then let it open the watch itself
+      send({ type: "conversation.message", role: "system", content: `FLEET_FACTS ${JSON.stringify({ ships: ships().map(shipFacts), fleet: TOOLS.read_commander({}) })}` });
+      send({ type: "reply.create" });
+    } else sayExactly(globalThis.officerForEar(opening.say));
     clearInterval(interruptTimer);
     interruptTimer = setInterval(pollInterrupts, INTERRUPT_EVERY_MS);
   }
@@ -304,39 +312,28 @@
     if (say && !asksSomething(say) && !result.close) say = `${say} ${OPEN_QUESTIONS[openQuestion++ % OPEN_QUESTIONS.length]}`; // a farewell is the one line that asks nothing
     return { ...result, say };
   }
-  async function answer(text) {
+  async function answer(text, { mirror = false } = {}) {
     const fresh = Date.now() - lastUserAt < 15000 && lastUserText;
     const words = fresh ? lastUserText : String(text || "");
-    const r = globalThis.officerRoute(words);
     if (!watch) { try { await loadAgenda(); } catch {} }
-    if (r.intent === "open") { await openWatch(); return { say: "" }; }
-    // A proposal lives for exactly one reply: "yes" takes it, anything else lets it go. Left hanging, it once swallowed
-    // "hand them all over" meant for the fixes on the table (2026-09-18).
-    const proposal = pendingProposal; pendingProposal = null;
-    if (proposal && r.intent === "decide") {
-      if (r.decision === "approve") { pendingProposal = proposal; return acceptProposal(); }
-      if (watch) return watch.hear({ intent: "thanks" }).then((h) => ({ ...h, say: h.say.replace(/^Any time\./, "Understood.") }));
-    }
-    // A bare ship name while a set of ships is on the table is a choice, not a cockpit order.
-    const bare = words.trim().split(/\s+/).length <= 2;
-    const cockpit = ["open_ship", "read", "navigate"].includes(r.intent) && !(r.intent === "open_ship" && bare && watch && /ships/.test(String(watch.state().focus || "")));
-    if (!cockpit && watch) {
-      const heard = await watch.hear(r.intent === "open_ship" ? { ...r, intent: "free" } : r);
-      if (heard) { showFor(heard.ui); if (heard.close) closing = true; return heard; }
-    }
-    switch (r.intent) {
-      case "open_ship": { const f = TOOLS.open_ship({ ship: r.ship }); return f.error ? { say: f.error } : { ...f, say: shipLine(f) }; }
-      case "read": { const f = TOOLS.read_commander({ ship: r.ship }); return f.error ? { say: f.error } : { ...f, say: readLine(f) }; }
-      case "navigate": { const f = TOOLS.navigate({ target: r.target }); return { ...f, say: f.error || f.done }; }
-      default: {
-        // The brain is for real questions. A few stray words get the choices again, at once, instead of a slow guess.
-        const question = /\?\s*$/.test(words) || /^(is|are|what|how|should|can|could|do|does|did|will|would|when|where|who|why|which|tell me|explain)\b/i.test(words.trim()) || words.trim().split(/\s+/).length >= 5;
-        if (!question && watch) return watch.hear({ intent: "unclear" });
+    if (!watch) return askOfficer(words);
+    const proposal = mirror ? (mirrorAsked && globalThis.officerWatch.proposes(lastAgentLine) ? { mirrored: true } : null) : pendingProposal;
+    pendingProposal = null; mirrorAsked = false;
+    const turnOf = await watch.converse(words, { proposal: Boolean(proposal) }); // the order of the turn lives in watch.js
+    switch (turnOf.kind) {
+      case "proposal-yes": pendingProposal = proposal; return mirror ? {} : acceptProposal();
+      case "watch": showFor(turnOf.ui); if (turnOf.close) closing = true; return turnOf;
+      case "cockpit": {
+        const r = turnOf.route;
+        if (r.intent === "navigate") { const f = TOOLS.navigate({ target: r.target }); return { ...f, say: f.error || f.done }; }
+        const f = r.intent === "read" ? TOOLS.read_commander({ ship: r.ship }) : TOOLS.open_ship({ ship: r.ship });
+        return f.error ? { say: f.error } : { ...f, say: r.intent === "read" ? globalThis.officerWatch.readLine(f) : globalThis.officerWatch.shipLine(f) };
+      }
+      default: // a real question: the brain's (in mirror mode the officer-as-LLM endpoint answers it; the cockpit only follows)
+        if (mirror) { if (turnOf.ship && findShip(turnOf.ship)) showFor({ ship: turnOf.ship }); mirrorAsked = true; return {}; }
         try { return await askOfficer(words); } catch (err) {
-          if (!watch) throw err;
           return watch.hear(err.status === 429 ? { intent: "busy", seconds: err.body.retry_after } : { intent: "unclear" });
         }
-      }
     }
   }
   async function acceptProposal() {
@@ -344,13 +341,6 @@
     const body = await api("/ask", { method: "POST", body: JSON.stringify({ accept: p }) });
     return { say: body.say || `Logged: ${p.title}.`, proposal: p };
   }
-  const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
-  const shipLine = (f) => {
-    const rank = ORDINALS[Number(f.position.replace("#", "")) - 1];
-    return `${f.ship} ${rank ? `is ranked ${rank}` : "is unranked"}, at the ${f.stage} stage${f.visitors ? `, with ${f.visitors} visitors` : ""}.${f.constraint ? ` What holds it back is ${f.constraint}.` : ""} ${f.read_line}`;
-  };
-  const readLine = (f) => `${f.ship}: ${f.read_line} ${f.last_read ? `Last read ${f.last_read.date}: ${f.last_read.verdict}. ${f.last_read.pragmatic}` : "No recorded read yet."}`;
-
   // ── Cockpit tools (the page's own functions + what is already in the DOM) ───
   const ships = () => Array.from(document.querySelectorAll(".ship"));
   const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

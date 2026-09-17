@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Stored AssemblyAI agents for the First Officer: a BYO model through AssemblyAI's LLM Gateway and the
-// officer's tools as HTTP tools the platform calls server-side. The browser then connects with agent_id only.
-//   node scripts/agent.mjs create <public-base-url> [model] [--header name=value]   → prints the agent id
+// The stored AssemblyAI agent whose model is the officer itself ("Connect your own LLM"): the platform calls
+// POST <public-base-url>/api/voice/llm/chat/completions for every reply, and the browser connects with agent_id only.
+//   node scripts/agent.mjs create <public-base-url>    needs OFFICER_LLM_KEY in .env; prints the id → OFFICER_AGENT_ID in .env
+//   node scripts/agent.mjs point <id> <public-base-url>  move an agent to a new host, or rotate the key
 //   node scripts/agent.mjs list | delete <id>
+// The host must be public HTTPS. Serve only that endpoint with: ONLY=llm API_ONLY=1 node scripts/dev.mjs
 import { readFileSync, existsSync } from "node:fs";
 
 if (existsSync(".env")) for (const line of readFileSync(".env", "utf8").split("\n")) {
@@ -12,31 +14,13 @@ if (existsSync(".env")) for (const line of readFileSync(".env", "utf8").split("\
 const KEY = process.env.ASSEMBLYAI_API_KEY;
 if (!KEY) { console.error("ASSEMBLYAI_API_KEY missing"); process.exit(1); }
 const API = "https://agents.assemblyai.com/v1/agents";
-const GATEWAY = "https://llm-gateway.assemblyai.com/v1";
-const [cmd, ...rest] = process.argv.slice(2);
-const args = rest.filter((a) => !a.startsWith("--"));
-const headers = rest.filter((a, i) => rest[i - 1] === "--header").map((h) => { const [name, ...v] = h.split("="); return { name, value: v.join("=") }; });
+const [cmd, ...args] = process.argv.slice(2);
 
-const voice = readFileSync("public/voice.js", "utf8");
-const promptSrc = voice.slice(voice.indexOf("system_prompt: [") + "system_prompt: ".length, voice.indexOf("].join(\" \")") + 1);
-const SYSTEM_PROMPT = new Function(`return ${promptSrc}`)().join(" ")
-  .replace("Ships: revela", "Open the watch with the open tool and say its 'say' text. Ships: revela");
-
-const tool = (base, name, description, properties = {}, required = []) => ({
-  type: "http", name, description,
-  parameters: { type: "object", properties, required },
-  execution_mode: "interactive", timeout_seconds: 15,
-  http: { url: `${base}/api/voice/officer?tool=${name}`, http_method: "POST", headers: [{ name: "bypass-tunnel-reminder", value: "1" }, ...headers] },
-});
-const tools = (base) => [
-  tool(base, "open", "Call this once at the start of the watch, or when the captain asks to start over. Returns the opening line to say."),
-  tool(base, "why", "Call this when the captain asks why, what the evidence is, or why an item is first. Do not call this to decide. Returns the evidence to say and the question to repeat."),
-  tool(base, "decide", "Call this only when the captain has said a decision word about the current item: yes, do it, approve, run it, no, drop, park, later, not now, noted. Never for a question. Records the decision and returns what to say next.",
-    { decision: { type: "string", enum: ["approve", "reject", "defer", "acknowledge"], description: "approve for yes/do it/act/run it; reject for no/drop; defer for park/later/not now; acknowledge for noted" }, note: { type: "string", description: "Anything the captain added, verbatim" } }, ["decision"]),
-  tool(base, "next", "Call this when the captain says next, skip, move on, or what else. Do not call this to decide. Advances the agenda and returns the next item to say."),
-  tool(base, "brief", "Call this when the captain asks for the brief, the summary, the overview, or what is on the agenda. Returns the summary to say."),
-];
-
+const llm = (base) => {
+  if (!/^https:\/\//.test(base || "")) { console.error("the base URL must be public https"); process.exit(1); }
+  if (!process.env.OFFICER_LLM_KEY) { console.error("OFFICER_LLM_KEY missing: put a long random value in .env; the platform sends it as the Bearer key and api/voice/llm.js checks it"); process.exit(1); }
+  return [{ base_url: `${base.replace(/\/$/, "")}/api/voice/llm`, model: "first-officer", api_key: process.env.OFFICER_LLM_KEY }];
+};
 async function call(method, url, body) {
   const r = await fetch(url, { method, headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   const text = await r.text();
@@ -46,24 +30,25 @@ async function call(method, url, body) {
 }
 
 if (cmd === "create") {
-  const [base, model = "claude-haiku-4-5-20251001"] = args; // pass "default" to keep the platform's own model
-  if (!base) { console.error("usage: create <public-base-url> [model]"); process.exit(1); }
   const agent = await call("POST", API, {
-    name: `first-officer ${model}`,
-    system_prompt: SYSTEM_PROMPT,
+    name: "first-officer (own LLM)",
+    // The endpoint decides every line; the prompt only matters if the platform ever falls back to its own model.
+    system_prompt: "You are the First Officer of the Hyperdrift Bridge. You report to the captain. Short sentences. Every line ends on a question.",
     voice: { voice_id: "anna" },
-    input: { turn_detection: { min_silence: 200, max_silence: 500 }, transcription_mode: "min_latency", keyterms: ["revela", "hyper-cv", "intel", "web3-capital", "mcp-maker", "Commander"] },
-    ...(model === "default" ? {} : { llm: [{ base_url: GATEWAY, model, api_key: KEY }] }),
-    tools: tools(base),
+    input: { turn_detection: { min_silence: 200, max_silence: 500 }, transcription_mode: "min_latency", keyterms: ["revela", "hyper-cv", "intel", "web3-capital", "Commander", "First Officer"] },
+    llm: llm(args[0]),
   });
   console.log(agent.id);
+} else if (cmd === "point") {
+  await call("PUT", `${API}/${args[0]}`, { llm: llm(args[1]) });
+  console.log("pointed", args[0], "→", args[1]);
 } else if (cmd === "list") {
   const { agents } = await call("GET", API);
-  agents.forEach((a) => console.log(a.id, a.name, a.llm?.[0]?.model || a.llm?.model || "default-llm", (a.tools || []).length + " tools"));
+  agents.forEach((a) => console.log(a.id, a.name, a.llm?.[0]?.base_url || "managed model"));
 } else if (cmd === "delete") {
   await call("DELETE", `${API}/${args[0]}`);
   console.log("deleted", args[0]);
 } else {
-  console.error("usage: agent.mjs create <base-url> [model] | list | delete <id>");
+  console.error("usage: agent.mjs create <public-base-url> | point <id> <public-base-url> | list | delete <id>");
   process.exit(1);
 }

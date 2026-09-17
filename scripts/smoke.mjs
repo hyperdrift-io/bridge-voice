@@ -35,16 +35,12 @@ if (argv.includes("--resp")) SESSION.tools.forEach((t) => { t.response_instructi
 const pcmOut = [];
 let afterTurn = false, judged = false;
 
-let seqBefore = 0;
+// A stored agent whose model is the officer itself calls no tool: the turn passes when the officer answers it.
 async function judgeByState() {
-  const st = await (await fetch(`${DEMO}/api/voice/officer?tool=state`)).json();
-  const tool = st.seq > seqBefore ? st.last?.tool : "no tool";
-  const ok = tool === EXPECT;
-  console.log(stamp(), ok ? `PASS: turn → ${EXPECT} (server-side)` : `FAIL: expected ${EXPECT}, got ${tool} (server-side)`);
-  done(ok ? 0 : 1);
+  console.log(stamp(), "FAIL: the stored agent did not answer the turn");
+  done(1);
 }
 async function startTurn() {
-  if (AGENT_ID) seqBefore = (await (await fetch(`${DEMO}/api/voice/officer?tool=state`)).json()).seq || 0;
   afterTurn = true;
   console.log(stamp(), `→ sending turn ${JSON.stringify(UTTERANCE)}`);
   setTimeout(() => { if (!judged) { judged = true; if (AGENT_ID) judgeByState(); else { console.log(stamp(), "FAIL: no tool.call within 20 s of the turn"); done(1); } } }, 20000);
@@ -122,6 +118,7 @@ ws.onmessage = ({ data }) => {
     case "reply.audio": audioBytes += ev.data.length; if (SAVE) pcmOut.push(Buffer.from(ev.data, "base64")); if (!firstAudioAt) { firstAudioAt = Date.now(); if (turnSent) console.log(stamp(), `first audio ${firstAudioAt - turnSent}ms after turn`); } break;
     case "transcript.agent":
       console.log(stamp(), "agent:", JSON.stringify(ev.text));
+      if (AGENT_ID && afterTurn && !judged) { judged = true; console.log(stamp(), `PASS: the officer answered ${firstAudioAt && turnSent ? firstAudioAt - turnSent + " ms after the turn" : ""}`); setTimeout(() => done(0), 300); }
       if (SAY && afterTurn && toolCalls.length && !judged) {
         judged = true;
         const words = (t) => t.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);

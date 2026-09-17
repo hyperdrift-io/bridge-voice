@@ -21,7 +21,9 @@ export async function mintToken({ ip, origin, host }) {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${process.env.ASSEMBLYAI_API_KEY}` } });
   if (!res.ok) return { status: 502, body: { error: `token mint failed: ${res.status}` } };
   const { token } = await res.json();
-  return { status: 200, body: { token, session_cap_seconds: SESSION_CAP_S } };
+  // With OFFICER_AGENT_ID set, the browser binds to the stored agent whose model is this host's own /api/voice/llm
+  // (scripts/agent.mjs creates it). Without it, the island configures the session itself and uses the managed model.
+  return { status: 200, body: { token, session_cap_seconds: SESSION_CAP_S, agent_id: process.env.OFFICER_AGENT_ID || null } };
 }
 
 export default async function handler(req, res) {

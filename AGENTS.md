@@ -73,6 +73,9 @@ roadmap is a bonus.
   result carries `say`, and the model reads it back verbatim. The model gets
   `{say}` and nothing else. No literal example ever goes in a tool
   description (the model copies it).
+- The conversation is `public/watch.js`: pure, tested offline, shared by the browser and by `api/voice/llm.js`
+  (the officer as the model, for AssemblyAI's own-LLM stored agents). The order of a turn lives in
+  `watch.converse`; change it there or the two callers drift apart.
 - Every line the officer speaks ends on a question and passes through
   `officerForEar` (dates a person would say, no symbols).
 - `public/mic.js` owns capture and mic health; the dock always shows one of

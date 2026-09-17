@@ -65,6 +65,44 @@ function allowed(req) {
   return recent.length < PER_IP_PER_HOUR;
 }
 
+// One real question, answered for the ear. Shared by the /ask handler (the island asks) and api/voice/llm.js (the officer
+// as the model). Returns { say, proposal, skill, model } or { busy: seconds }; throws when the brain cannot be reached.
+export async function answerQuestion({ question, ship = "", facts = null, fleet = null, state = null }) {
+  ship = String(ship || "").toLowerCase();
+  const skill = (RULES.find(([re]) => re.test(question.toLowerCase())) || [null, "strategist"])[1];
+  // A small model answers from what it is handed and nothing else: the ship's own facts (sent by the island from the
+  // cockpit), the fleet's numbers when no ship is named, and only the agenda items that matter. Handing it the whole
+  // agenda made it answer a pricing question with heal findings (2026-09-17).
+  const agenda = load();
+  const items = agenda.items.filter((i) => (ship ? i.ship === ship : true)).slice(0, 4).map((i) => `- ${i.headline} ${i.why.slice(0, 2).join(" ")}`).join("\n");
+  const flat = (o) => Object.entries(o || {}).filter(([, v]) => v && typeof v !== "object").map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${String(v).slice(0, 300)}`).join("\n");
+  const read = facts?.last_read;
+  const lastRead = read ? `- last Commander read (${read.date}): verdict ${String(read.verdict).replace(/_/g, " ")}. ${read.pragmatic} Opportunity: ${read.opportunity} Confidence: ${read.confidence}` : "";
+  const fleetLines = fleet ? `The fleet right now:\n${flat(fleet)}\n${(fleet.ships || []).slice(0, 6).map((f) => `- ${f.ship}: stage ${f.stage}${f.constraint ? `, held back by ${f.constraint}` : ""}. ${f.read_line || ""}`).join("\n")}\n` : "";
+  // The conversation so far, so "what's that about?" has something to be about.
+  const st = state || {};
+  const table = st.last ? `You just said to the captain: "${String(st.last).slice(0, 400)}"\n${st.focus ? `On the table: ${String(st.focus).slice(0, 200)}\n` : ""}` : "";
+  const prompt = `You are the First Officer of the Hyperdrift Bridge. You report to the captain, who runs a small fleet of live apps: you bring the agenda, record decisions, and answer questions about the ships. You are talking out loud, like a trusted colleague across the table.
+${table}The captain now says: "${question}"
+
+Voice: warm, plain, direct. Strengths first; a gap is a next step, never a fault. No alarm words (bleeding, dying, killing, disaster, failing). No jargon you were not given. Never invent a number, a name or a fact: if what you know below does not settle it, say what you would check first.
+Skill (${skill}): ${GUIDES[skill]}
+${ship ? `What we know about ${ship}:\n${[flat(facts), lastRead].filter(Boolean).join("\n") || "(nothing recorded)"}\n` : fleetLines}On the agenda${ship ? ` for ${ship}` : ""}:
+${items || "(nothing)"}
+
+Answer for the ear in under 60 words, in full sentences: your opinion first, then the one fact above that decides it, then stop. No lists, no headings. Then on a final separate line propose exactly one next step as JSON:
+PROPOSAL: {"kind": "note|mission|read|none", "title": "<one line>", "ask": "<Shall I ...? in ten words>"}`;
+  const thought = await think(prompt);
+  if (thought.busy) return { busy: thought.busy };
+  const raw = thought.text, model = thought.model;
+  let say = raw.trim(), proposal = null;
+  const m = say.match(/PROPOSAL:\s*(\{[\s\S]*\})\s*$/);
+  if (m) { try { proposal = JSON.parse(m[1]); } catch { proposal = null; } say = say.slice(0, m.index).trim(); }
+  if (proposal && (!proposal.kind || proposal.kind === "none")) proposal = null;
+  if (proposal) proposal = { kind: String(proposal.kind), title: String(proposal.title || "").slice(0, 160), ask: String(proposal.ask || "Shall I?").slice(0, 120), ship, question };
+  return { skill, ship, model, say, proposal };
+}
+
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); res.status(405).json({ error: "POST only" }); return; }
@@ -77,43 +115,11 @@ export default async function handler(req, res) {
   if (!allowed(req)) { res.status(429).json({ ok: false, error: "too many questions from this address", say: "I have answered a lot of questions from here in the last hour. Shall we go back to the agenda?" }); return; }
   const question = String(req.body?.question || "").trim().slice(0, 400);
   if (!question) { res.status(400).json({ ok: false, error: "question is required" }); return; }
-  const ship = String(req.body?.ship || "").toLowerCase();
-  const skill = (RULES.find(([re]) => re.test(question.toLowerCase())) || [null, "strategist"])[1];
-  // A small model answers from what it is handed and nothing else: the ship's own facts (sent by the island from the
-  // cockpit), the fleet's numbers when no ship is named, and only the agenda items that matter. Handing it the whole
-  // agenda made it answer a pricing question with heal findings (2026-09-17).
-  const agenda = load();
-  const items = agenda.items.filter((i) => (ship ? i.ship === ship : true)).slice(0, 4).map((i) => `- ${i.headline} ${i.why.slice(0, 2).join(" ")}`).join("\n");
-  const flat = (o) => Object.entries(o || {}).filter(([, v]) => v && typeof v !== "object").map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${String(v).slice(0, 300)}`).join("\n");
-  const read = req.body?.facts?.last_read;
-  const lastRead = read ? `- last Commander read (${read.date}): verdict ${String(read.verdict).replace(/_/g, " ")}. ${read.pragmatic} Opportunity: ${read.opportunity} Confidence: ${read.confidence}` : "";
-  const fleet = req.body?.fleet ? `The fleet right now:\n${flat(req.body.fleet)}\n${(req.body.fleet.ships || []).slice(0, 6).map((f) => `- ${f.ship}: stage ${f.stage}${f.constraint ? `, held back by ${f.constraint}` : ""}. ${f.read_line || ""}`).join("\n")}\n` : "";
-  // The conversation so far, so "what's that about?" has something to be about.
-  const st = req.body?.state || {};
-  const table = st.last ? `You just said to the captain: "${String(st.last).slice(0, 400)}"\n${st.focus ? `On the table: ${String(st.focus).slice(0, 200)}\n` : ""}` : "";
-  const prompt = `You are the First Officer of the Hyperdrift Bridge. You report to the captain, who runs a small fleet of live apps: you bring the agenda, record decisions, and answer questions about the ships. You are talking out loud, like a trusted colleague across the table.
-${table}The captain now says: "${question}"
-
-Voice: warm, plain, direct. Strengths first; a gap is a next step, never a fault. No alarm words (bleeding, dying, killing, disaster, failing). No jargon you were not given. Never invent a number, a name or a fact: if what you know below does not settle it, say what you would check first.
-Skill (${skill}): ${GUIDES[skill]}
-${ship ? `What we know about ${ship}:\n${[flat(req.body?.facts), lastRead].filter(Boolean).join("\n") || "(nothing recorded)"}\n` : fleet}On the agenda${ship ? ` for ${ship}` : ""}:
-${items || "(nothing)"}
-
-Answer for the ear in under 60 words, in full sentences: your opinion first, then the one fact above that decides it, then stop. No lists, no headings. Then on a final separate line propose exactly one next step as JSON:
-PROPOSAL: {"kind": "note|mission|read|none", "title": "<one line>", "ask": "<Shall I ...? in ten words>"}`;
-  let raw = "", model = MODEL;
   try {
-    const thought = await think(prompt);
-    if (thought.busy) { res.status(429).json({ ok: false, error: "the model line is busy", retry_after: thought.busy }); return; }
-    raw = thought.text; model = thought.model;
+    const answer = await answerQuestion({ question, ship: req.body?.ship, facts: req.body?.facts, fleet: req.body?.fleet, state: req.body?.state });
+    if (answer.busy) { res.status(429).json({ ok: false, error: "the model line is busy", retry_after: answer.busy }); return; }
+    res.status(200).json({ ok: true, contract: "hd.voice.ask.v1", ...answer });
   } catch (err) {
     res.status(502).json({ ok: false, error: String(err.message || err) });
-    return;
   }
-  let say = raw.trim(), proposal = null;
-  const m = say.match(/PROPOSAL:\s*(\{[\s\S]*\})\s*$/);
-  if (m) { try { proposal = JSON.parse(m[1]); } catch { proposal = null; } say = say.slice(0, m.index).trim(); }
-  if (proposal && (!proposal.kind || proposal.kind === "none")) proposal = null;
-  if (proposal) proposal = { kind: String(proposal.kind), title: String(proposal.title || "").slice(0, 160), ask: String(proposal.ask || "Shall I?").slice(0, 120), ship, question };
-  res.status(200).json({ ok: true, contract: "hd.voice.ask.v1", skill, ship, model, say, proposal });
 }

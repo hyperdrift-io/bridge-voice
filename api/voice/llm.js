@@ -6,30 +6,53 @@
 // past utterances. Replay records nothing; the island records decisions as they are spoken.
 import { readFileSync, appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { load, doneLine } from "./agenda.js";
+import { answerQuestion } from "./ask.js";
 
 const file = (rel) => fileURLToPath(new URL(rel, import.meta.url));
 new Function(readFileSync(file("../../public/router.js"), "utf8"))();
 new Function(readFileSync(file("../../public/watch.js"), "utf8"))();
-const SPOKEN = { approve: "Logged as approved.", reject: "Logged as rejected.", defer: "Parked; I will bring it back.", acknowledge: "Noted." };
+const { create, shipLine, readLine, proposes } = globalThis.officerWatch;
 
 const text = (content) => (typeof content === "string" ? content : Array.isArray(content) ? content.map((p) => p.text || "").join(" ") : "").trim();
+const FACTS = "FLEET_FACTS "; // the island hands the cockpit's facts over once, as a system message, when the watch opens
+const SAY = "OFFICER_SAY "; // and this is how the island has the officer speak unprompted (a fleet interrupt): a system message, then reply.create
+const lastSentence = (line) => (String(line).match(/[^.?!]+[.?!]+\s*$/) || [String(line)])[0].trim();
 
-export async function reply(messages) {
-  const agenda = JSON.parse(readFileSync(file("../../fixtures/agenda.json"), "utf8"));
-  const doneLine = (key, verdict) => {
-    const item = agenda.items.find((i) => i.key === key) || {};
-    if (item.kind === "heal" && verdict === "approve") return `Approved ${item.keys.length} findings; on the live fleet this hands them to an agent.`;
-    if (item.kind === "read" && verdict === "approve") return `On the live fleet this starts a Commander read on ${item.ship}. Here it is logged.`;
-    return SPOKEN[verdict] || "Logged.";
-  };
-  const watch = globalThis.officerWatch.create(agenda, { decide: async (key, decision) => ({ done: doneLine(key, decision) }) });
-  const said = messages.filter((m) => m.role === "user").map((m) => text(m.content)).filter(Boolean);
-  let line = watch.open();
-  for (const words of said) {
-    const heard = await watch.hear(globalThis.officerRoute(words));
-    line = heard || (await watch.hear({ intent: "unclear" }));
+// The line for the newest captain utterance. Everything before it is replayed dry: the watch moves, nothing is asked of
+// the brain (what it answered is already in the transcript) and nothing is recorded.
+export async function reply(messages, { ask = answerQuestion } = {}) {
+  const unprompted = messages.map((m, i) => (m.role === "system" && text(m.content).startsWith(SAY) ? i : -1)).filter((i) => i >= 0).pop();
+  if (unprompted !== undefined && !messages.slice(unprompted + 1).some((m) => m.role === "user" || m.role === "assistant")) return globalThis.officerForEar(text(messages[unprompted].content).slice(SAY.length));
+  const agenda = load();
+  const watch = create(agenda, { decide: async (key, decision) => ({ done: doneLine(agenda.items.find((i) => i.key === key) || {}, decision) }) });
+  const handed = messages.filter((m) => m.role === "system" && text(m.content).startsWith(FACTS)).map((m) => { try { return JSON.parse(text(m.content).slice(FACTS.length)); } catch { return null; } }).filter(Boolean).pop() || {};
+  const facts = (ship) => (handed.ships || []).find((f) => f.ship === ship) || null;
+  const turns = []; // [captain's words, what the officer then said (from the transcript, when there is one)]
+  for (const m of messages) {
+    if (m.role === "user" && text(m.content)) turns.push([text(m.content), ""]);
+    else if (m.role === "assistant" && turns.length && !turns[turns.length - 1][1]) turns[turns.length - 1][1] = text(m.content);
   }
-  return globalThis.officerForEar(line.say);
+  let line = watch.open().say, proposal = false, proposed = "";
+  for (const [i, [words, answered]] of turns.entries()) {
+    const live = i === turns.length - 1;
+    const turn = await watch.converse(words, { proposal });
+    proposal = false;
+    if (turn.kind === "watch") line = turn.say;
+    else if (turn.kind === "proposal-yes") line = `Logged as a next step: ${proposed.replace(/^Shall I\s+/i, "").replace(/\?$/, "")}. On the live fleet this lands in the ship's notebook.`;
+    else if (turn.kind === "cockpit") {
+      const f = turn.route.ship && facts(turn.route.ship);
+      line = turn.route.intent === "navigate" ? "Done." : f ? (turn.route.intent === "read" ? readLine(f) : shipLine(f)) : `I have ${turn.route.ship || "that"} on the screen for you.`;
+    } else { // a real question
+      if (!live) { proposal = proposes(answered); proposed = lastSentence(answered); continue; }
+      try {
+        const a = await ask({ question: words, ship: turn.ship, facts: facts(turn.ship), fleet: turn.ship ? null : handed.fleet || null, state: watch.state() });
+        line = a.busy ? (await watch.hear({ intent: "busy", seconds: a.busy })).say : `${a.say}${a.proposal ? ` ${a.proposal.ask || "Shall I?"}` : ""}`;
+      } catch { line = (await watch.hear({ intent: "unclear" })).say; }
+    }
+  }
+  const say = globalThis.officerForEar(line);
+  return /[?]["”']?$/.test(say) || /Fair winds/.test(say) ? say : `${say} What next, Captain?`; // every line ends on a question, the farewell aside
 }
 
 export default async function handler(req, res) {

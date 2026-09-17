@@ -123,3 +123,30 @@ followed, one of them with a barge-in. Cause unknown; watch for it.
   well. The build now attaches one island as files.
 - **The gateway refuses bursts** ("too many requests for this action") on back-to-back
   `/ask` calls; one retry after 1.2 s covers it.
+
+## Fourth session (2026-09-18): the managed model off the happy path, and the way out
+
+After the founder's verdict ("I can't have a conversation with it"), the conversation became a pure module
+(`public/watch.js`) and the spoken gate was pointed at what people actually do: answer before the officer has quite finished.
+
+- **Natural pace works.** Eight spoken turns, each answered 1.6–2.2 s after the end of speech, one tool call per turn,
+  the goodbye ending the session by itself.
+- **Speaking over the tail of the officer's line loses turns, two ways.** (a) The service transcribes the words but the
+  managed model answers without calling the tool: it re-read the whole opening (12 s), and the next utterance, spoken under
+  it, was lost too. (b) The service drops the words: `input.speech.stopped` and never a `transcript.user`. Barge-in is
+  "semantic", and a short answer near the end of a line does not count as one.
+- **A client cannot cancel a reply.** There is no cancel event, and `reply.create` queues behind the reply in progress.
+  A watchdog that muted the improvised reply and queued the right line left 13 s of silence, after which the model voiced
+  tool syntax and re-read the opening. Removed. What stays: into silence only, "Sorry, Captain, I was still talking. Say
+  that again?" when loud speech ended and no transcript came.
+- **The LLM Gateway on this account:** one model (`qwen3.5-4b-32k-fast`), `x-ratelimit-limit: 2` per ~35 s window, and
+  every frontier model answers "Your account does not have access". A 4B model will not classify-or-answer in one prompt;
+  it states facts backwards now and then ("has been verified" for "must be verified").
+- **The way out is in the platform: "Connect your own LLM".** A stored agent takes `llm: [{ base_url, model, api_key }]`
+  and the platform calls `POST {base_url}/chat/completions` (OpenAI schema, streamed) for every reply. `api/voice/llm.js`
+  is that endpoint: the officer as the model. Same router and watch as the browser, stateless (the watch is rebuilt by
+  replaying the captain's utterances; past questions are not asked again), facts handed over once by the island as a
+  `FLEET_FACTS` system message, unprompted lines as `OFFICER_SAY`. No tool round-trip, no model to go off script.
+  Tested offline (`scripts/llm.test.mjs`) and over local HTTP. **Not yet run against the platform**: it needs a public
+  HTTPS host. Open questions for that first run: does this account accept a custom `llm`, are `conversation.message`
+  system messages forwarded to it, and does a bare `reply.create` call it with no user message.
