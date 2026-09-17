@@ -73,7 +73,7 @@ const INSTRUMENT = `(() => {
       });
       this.addEventListener("close", (e) => push({ ev: "ws.close", text: String(e.code) }));
       this.chunks = 0; this.peak = 0; this.loud = false; this.lastLoud = 0;
-      this.stats = setInterval(() => { push({ ev: "mic.sent", text: this.chunks + " chunks, peak " + this.peak + (this.bufferedAmount ? ", buffered " + this.bufferedAmount : "") }); this.chunks = 0; this.peak = 0; }, 5000);
+      this.stats = setInterval(() => { push({ ev: "mic.sent", text: this.chunks + " chunks, peak " + this.peak + ", ahead " + Math.round(this.samples / 24 - (performance.now() - this.firstAt)) + " ms" + (this.bufferedAmount ? ", buffered " + this.bufferedAmount : "") }); this.chunks = 0; this.peak = 0; }, 5000);
     }
     send(data) {
       const m = JSON.parse(data);
@@ -81,6 +81,7 @@ const INSTRUMENT = `(() => {
         const bin = atob(m.audio); let peak = 0;
         for (let i = 0; i + 1 < bin.length; i += 2) { const v = Math.abs((bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8)) << 16 >> 16); if (v > peak) peak = v; }
         this.chunks += 1; if (peak > this.peak) this.peak = peak;
+        if (!this.firstAt) { this.firstAt = performance.now(); this.samples = 0; } this.samples += bin.length / 2; // audio sent vs wall clock: "ahead" growing means the service falls behind
         const now = Math.round(performance.now() - t0);
         if (peak > 600) { if (!this.loud) { this.loud = true; push({ ev: "mic.loud.start" }); } this.lastLoud = now; }
         else if (this.loud && now - this.lastLoud > 400) { this.loud = false; log.push({ t: this.lastLoud, ev: "mic.loud.end" }); }
@@ -144,7 +145,7 @@ all.sort((a, b) => a.t - b.t);
 console.log(`\ndock at the end: ${dockSays}`);
 const sent = all.filter((e) => e.ev === "mic.sent");
 console.log(`mic: ${all.find((e) => e.ev === "mic.open")?.text || all.find((e) => e.ev === "mic.error")?.text || "never opened"}`);
-console.log(`audio sent: ${sent.map((e) => e.text.replace(" chunks, peak ", "/")).join("  ")}  (chunks/peak per 5 s; 100 chunks = real time)`);
+console.log(`audio sent: ${sent.map((e) => e.text.replace(" chunks, peak ", "/").replace(", ahead ", " +")).join("  ")}  (chunks/peak per 5 s, then audio sent ahead of the wall clock)`);
 let fail = false;
 const ends = all.filter((e) => e.ev === "mic.loud.end");
 turns.forEach((turn, i) => {
