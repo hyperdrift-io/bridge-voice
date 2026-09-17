@@ -46,13 +46,15 @@ async function handlerFor(name) {
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   if (process.env.LOG_REQUESTS) console.log(new Date().toISOString(), req.method, req.url, req.headers["user-agent"] || "");
-  const api = url.pathname.match(/^\/api\/voice\/([a-z-]+)$/);
+  const api = url.pathname.match(/^\/api\/voice\/([a-z-]+)$/) || url.pathname.match(/^\/api\/voice\/(llm)\/chat\/completions$/); // the second is what AssemblyAI calls: {base_url}/chat/completions
   if (api) {
+    if (process.env.ONLY && api[1] !== process.env.ONLY) { res.writeHead(404).end("not served here"); return; } // ONLY=llm: a tunnel that exposes the officer's LLM endpoint and nothing else
     const handler = await handlerFor(api[1]);
     if (!handler) { res.writeHead(404).end("no such function"); return; }
     let raw = "";
     for await (const chunk of req) raw += chunk;
     const shim = {
+      raw: res, // for handlers that stream (api/voice/llm.js)
       statusCode: 200, headers: {},
       setHeader(k, v) { this.headers[k] = v; },
       status(c) { this.statusCode = c; return this; },
