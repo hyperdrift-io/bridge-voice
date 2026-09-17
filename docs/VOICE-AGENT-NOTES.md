@@ -81,3 +81,45 @@ so the 30 s resume window is not billed.
   gateway models?
 - **Turn-to-tool on the spoken path with the single tool:** 1.9–2.3 s end of speech →
   `tool.call`, unchanged from the three-tool design.
+
+## Third session (2026-09-17): the spoken path through a real browser
+
+Measured with `scripts/mic-test.mjs`: headless Chrome, the real `getUserMedia` → worklet →
+socket path, Chrome's fake capture device playing macOS-`say` utterances from a WAV, an
+injected logger on the socket. Five sessions, 18 spoken turns. "End of speech" is the last
+loud chunk the page sent, so capture and resampling are included; a physical microphone
+and room are not.
+
+| Step | Measured |
+|---|---|
+| start of speech → `input.speech.started` | 0.68–0.82 s (1.06 s when barging in on the officer) |
+| end of speech → `tool.call` | 1.45–2.03 s |
+| **end of speech → answer audio starts** | **1.48–2.06 s**, 16 of 18 turns |
+| free question: `/ask` on the demo host (LLM Gateway, qwen) | 0.5–0.9 s on top |
+| barge-in during the opening line | answered at 2.06 s, no lag afterwards |
+
+One session of the five drifted: detection slipped from 0.8 s to 3.7 s over 145 s and the
+last two answers started at 5 s. It did not reproduce in the two sessions (10 turns) that
+followed, one of them with a barge-in. Cause unknown; watch for it.
+
+- **The model sometimes calls the tool twice for one utterance** (3 of 9 turns; 1 of 10 after
+  the prompt said "exactly once … never call it again until the captain speaks again"). The
+  second call lands ~1.5 s into the answer and restarts the line. The island answers a
+  second call in the same captain turn from a cache, so nothing is acted on twice; the
+  audible restart remains when it happens.
+- **A proactive line (`reply.create` "Say exactly …") is routed through the tool** with the
+  instruction itself as `text`. Hand it back by turn count: the captain has not spoken since
+  it was issued. Matching on the text fails, and routing it once parked item one off the
+  officer's own "…or park it?".
+- **The model gets `{say}` and nothing else.** Extra fields buy nothing from a model that
+  only reads back.
+- **Lines written for the eye cost seconds.** "2026-09-07 06:59 UTC" took the TTS 13–15 s
+  per line. `officerForEar` turns ISO dates into "7 September" and drops symbols.
+- **Headless Chrome reads a fake-capture WAV as silence** unless
+  `--disable-features=AudioServiceSandbox` is set. No error, just zeros.
+- **A snapshot with two inlined islands** (renderer + build-demo) leaves one dock dead:
+  the scrub strips its `<form>`, the script throws before the worklet and the agenda client
+  exist, and the mic error is swallowed. A human clicks the top, working dock, so it hides
+  well. The build now attaches one island as files.
+- **The gateway refuses bursts** ("too many requests for this action") on back-to-back
+  `/ask` calls; one retry after 1.2 s covers it.

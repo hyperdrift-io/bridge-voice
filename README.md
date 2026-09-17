@@ -25,17 +25,21 @@ the demo host are the work built inside the contest window.
 ## Run it
 
 ```bash
-cp .env.example .env            # ASSEMBLYAI_API_KEY — sign up through the hackathon page link so credits attach
-pnpm serve                      # static public/ + POST /api/voice-token on http://127.0.0.1:8787
-pnpm smoke                      # headless kill gate: token → socket → greeting → text turn → tool call
-pnpm smoke -- --audio utt.wav open_ship   # same, streaming a 24 kHz PCM16 WAV in real time
+cp .env.example .env                 # ASSEMBLYAI_API_KEY — sign up through the hackathon page link so credits attach
+CREW_API=0 npm run serve             # static public/ + /api/voice/<name> on http://127.0.0.1:8787 (no install needed)
+node --test scripts/router.test.mjs  # routing and for-the-ear cases, offline
+node scripts/mic-test.mjs "why@17" "next@42"   # spoken-path gate: real Chrome, a WAV as the microphone (paid session)
+npm run smoke                        # socket-only gate from Node: token → socket → turn → tool call (paid session)
 ```
+
+Open http://127.0.0.1:8787 in Chrome and allow the microphone, or add `#text` to type instead.
+The dock always shows the mic's state: listening, hearing, heard, or what is in the way.
 
 Refresh the snapshot from the monorepo:
 
 ```bash
 cd ~/dev/hyperdrift/scripts && python3 -m bau.cli fleet-status --html --out /tmp/bridge.html
-cd - && pnpm build:demo -- /tmp/bridge.html --reads ~/dev/hyperdrift/.nightcrew
+cd - && npm run build:demo -- /tmp/bridge.html --reads ~/dev/hyperdrift/.nightcrew
 ```
 
 The build scrubs private surfaces and prints a report. `public/index.html` is
@@ -44,9 +48,10 @@ the frozen result and stays out of git until the founder has read that report.
 ## Layout
 
 ```
-public/index.html        frozen, scrubbed Bridge snapshot with the officer inlined (built, gitignored until approved)
-public/router.js         the officer's ear: the captain's words → one intent, deterministically (tests: scripts/router.test.mjs)
-public/voice.js          the island: session, audio, the watch, the single tool, cockpit tools
+public/index.html        frozen, scrubbed Bridge snapshot that loads the officer's files (built, gitignored until approved)
+public/router.js         the officer's ear and mouth: words → one intent, lines made sayable (tests: scripts/router.test.mjs)
+public/mic.js            the microphone: capture → 24 kHz PCM16, and the health read the dock shows
+public/voice.js          the island: session, playback, the watch, the single tool, cockpit tools
 public/voice.css         a handful of rules over the Bridge's own cascade
 api/voice/token.js       mints a single-use temp token (the key never reaches the browser)
 api/voice/agenda.js      the agenda contract from a frozen, scrubbed day (fixtures/agenda.json)
@@ -55,7 +60,8 @@ api/voice/ask.js         a question → skill → opinion + one proposal (gatewa
 api/voice/interrupts.js  Helm's sandbox events, spoken unprompted
 api/voice/control.js     the judges' write path: Helm's sandbox ship only, rate-limited
 api/voice/officer.js     server-side officer state (for stored-agent HTTP tools; parked, see notes)
-scripts/build-demo.mjs   snapshot → scrub → expose page functions → inline router + island
+scripts/build-demo.mjs   snapshot → scrub → expose page functions → attach the officer's files
+scripts/mic-test.mjs     spoken-path gate: real Chrome, fake capture device, per-turn timing
 scripts/dev.mjs          zero-dependency local server: static + every api/voice/<name>.js
 scripts/smoke.mjs        headless kill gate: audio in, timing, routing, read-back fidelity
 scripts/agent.mjs        stored agents (BYO model + HTTP tools) — blocked by model access on this account
