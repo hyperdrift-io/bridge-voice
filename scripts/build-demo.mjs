@@ -135,7 +135,7 @@ html = html.replace(/<link rel="manifest"[^>]*>\s*/, "");
 html = html.replace(/\s*if \("serviceWorker" in navigator[\s\S]*?\.catch\(\(\) => \{\}\);?\s*\}/, "");
 const iifeStart = html.indexOf("<script>\n(() => {\n");
 if (iifeStart < 0) throw new Error("could not find the Bridge IIFE start — page shape changed");
-html = html.replace("<script>\n(() => {\n", "<script>\n(() => {\n  const fetch = () => Promise.reject(new Error(\"offline snapshot\"));\n");
+html = html.replace("<script>\n(() => {\n", "<script>\n(() => {\n  window.__bridgeSnapshot = true;\n  const fetch = () => Promise.reject(new Error(\"offline snapshot\"));\n");
 report.push("offline: manifest + service worker dropped, Crew API fetches short-circuited");
 
 // 4. Expose the page's functions. The whole script is one IIFE ending in `})();`.

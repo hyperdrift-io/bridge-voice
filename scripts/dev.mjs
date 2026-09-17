@@ -5,6 +5,8 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { spawn } from "node:child_process";
+import { connect } from "node:net";
 
 if (existsSync(".env")) {
   for (const line of readFileSync(".env", "utf8").split("\n")) {
@@ -13,6 +15,23 @@ if (existsSync(".env")) {
   }
 }
 const PORT = Number(process.env.PORT || 8787);
+const CREW_PORT = Number(process.env.CREW_API_PORT || 8765);
+
+// The Bridge's guided-work buttons post jobs to the Crew API (`hd commander serve`).
+// Start it alongside the dashboard when nothing listens yet, so a click never dead-ends.
+function ensureCrewApi() {
+  if (process.env.CREW_API === "0") return;
+  const probe = connect({ host: "127.0.0.1", port: CREW_PORT });
+  probe.once("connect", () => { probe.end(); console.log(`crew api   → http://127.0.0.1:${CREW_PORT}  (already running)`); });
+  probe.once("error", () => {
+    const child = spawn("hd", ["commander", "serve", "--port", String(CREW_PORT)], { stdio: "inherit" });
+    child.once("error", (err) => console.warn(`crew api   → not started (${err.message}); run \`hd commander serve\` yourself`));
+    process.once("exit", () => child.kill());
+    process.once("SIGINT", () => process.exit(0));
+    process.once("SIGTERM", () => process.exit(0));
+  });
+}
+ensureCrewApi();
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml" };
 const handlers = new Map();
 
