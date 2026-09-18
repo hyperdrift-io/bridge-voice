@@ -21,6 +21,13 @@ test("the opening offers choices instead of marching through item one", () => {
   assert.match(line, /^Evening, Captain\. Three things today: the voice hackathon deadline, eleven small fixes an agent can take, and four ships overdue a read\. Which one first\?$/);
 });
 
+test("'why?' before anything is on the table answers about the agenda, and yes takes it", async () => {
+  const { w, hear } = watch();
+  w.open();
+  assert.match(await hear("why?"), /^Nothing is on the table yet\. The voice hackathon deadline is the most pressing, because the only open step is a quick check on your side, and the entry closes 2026-09-30\. Shall we take it\?$/);
+  assert.match(await hear("yes"), /^The AssemblyAI voice hackathon closes 2026-09-30/);
+});
+
 test("pick by name, hear why a line at a time, decide, and get the rest offered", async () => {
   const { w, log, hear } = watch();
   w.open();

@@ -86,6 +86,7 @@ export async function answerQuestion({ question, ship = "", facts = null, fleet 
 ${table}The captain now says: "${question}"
 
 Voice: warm, plain, direct. Strengths first; a gap is a next step, never a fault. No alarm words (bleeding, dying, killing, disaster, failing). No jargon you were not given. Never invent a number, a name or a fact: if what you know below does not settle it, say what you would check first.
+Say what is written, in the direction it is written: a step that "must be verified" has NOT been verified, and a read that was inconclusive is still inconclusive. Never report a pending step as done.
 Skill (${skill}): ${GUIDES[skill]}
 ${ship ? `What we know about ${ship}:\n${[flat(facts), lastRead].filter(Boolean).join("\n") || "(nothing recorded)"}\n` : fleetLines}On the agenda${ship ? ` for ${ship}` : ""}:
 ${items || "(nothing)"}

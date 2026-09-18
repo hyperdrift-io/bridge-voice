@@ -16,6 +16,7 @@ const TAIL_S = Number(flag("--tail", 14)); // listen this long after the last ut
 const PORT = Number(flag("--port", 8799));
 const CDP_PORT = Number(flag("--cdp", 9377));
 const HEADED = argv.includes("--headed");
+const SESSION_PATCH = JSON.parse(flag("--session", "null")); // test a session setting without touching the island: merged into the island's own session.update
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const RATE = 48000;
 const turns = argv.filter((a) => /@\d/.test(a)).map((a) => { const at = a.lastIndexOf("@"); return { text: a.slice(0, at), at: Number(a.slice(at + 1)) }; });
@@ -50,6 +51,8 @@ writeFileSync(micWav, Buffer.concat([header, pcm]));
 
 // ── Runs inside the page before the island: logs the mic, every socket event, and the level of what is sent ──
 const INSTRUMENT = `(() => {
+  const PATCH = ${JSON.stringify(SESSION_PATCH)};
+  const merge = (a, b) => { for (const [k, v] of Object.entries(b || {})) { if (v === null) delete a[k]; else if (v && typeof v === "object" && !Array.isArray(v)) a[k] = merge(a[k] || {}, v); else a[k] = v; } return a; };
   const t0 = performance.now(), log = (window.__log = []);
   const push = (o) => log.push({ t: Math.round(performance.now() - t0), ...o });
   const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -77,6 +80,7 @@ const INSTRUMENT = `(() => {
     }
     send(data) {
       const m = JSON.parse(data);
+      if (PATCH && m.type === "session.update" && m.session && !m.session.agent_id) { merge(m.session, PATCH); data = JSON.stringify(m); push({ ev: "session.patched", text: JSON.stringify(m.session.input) }); }
       if (m.type === "input.audio") {
         const bin = atob(m.audio); let peak = 0;
         for (let i = 0; i + 1 < bin.length; i += 2) { const v = Math.abs((bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8)) << 16 >> 16); if (v > peak) peak = v; }

@@ -77,12 +77,16 @@
     }
     function why() {
       const it = focus && focus.item;
-      if (!it) return focus ? say(`${focus.topic.items[0].why[0] || "Nothing more is attached."} ${cap(groupOffers(focus.topic))}`) : menu();
+      // "Why?" with nothing on the table yet (the captain's first word after the opening) is a fair question about the
+      // agenda itself, not a dead end: answer with the officer's own order of business.
+      if (!focus) { const t = topics()[0]; if (!t) return menu(); pending = { pick: t }; return say(`Nothing is on the table yet. ${cap(t.label)} is the most pressing, because ${reason(t)}. Shall we take it?`); }
+      if (!it) return say(`${focus.topic.items[0].why[0] || "Nothing more is attached."} ${cap(groupOffers(focus.topic))}`);
       const line = it.why[whyAt];
       if (!line) return say(`That is all I have on it. ${cap(offers(it, false))}`);
       whyAt += 1;
       return say(`${line} ${it.why[whyAt] ? "Want more, or shall we decide?" : cap(offers(it, false))}`);
     }
+    const reason = (t) => { const r = (t.items[0].rationale || t.items[0].why[0] || "it is first on the agenda").replace(/\.$/, ""); return r.charAt(0).toLowerCase() + r.slice(1); };
     function recommend() {
       const it = focus && (focus.item || focus.topic.items[0]);
       if (!it) { const t = topics()[0]; if (!t) return menu(); pending = { pick: t }; return say(`I would start with ${t.label}. Shall we?`); }
@@ -136,7 +140,8 @@
         case "busy": return say(`Give me about ${r.seconds || 30} seconds before my next considered answer. Meanwhile: ${focus ? onTable(true) : menu().say}`);
         case "thanks": return say(`Any time. ${focus ? cap(onTable(false)) : menu().say}`);
         case "close_watch": return { ...say(`Watch closed. ${decided ? `${cap(count(decided))} decision${decided === 1 ? "" : "s"} logged.` : "Nothing decided, nothing lost."} Fair winds, Captain.`), close: true };
-        case "why": case "more": return focus ? why() : menu();
+        case "why": return why();
+        case "more": return focus ? why() : menu();
         case "recommend": return recommend();
         case "next": { const ts = topics(); const at = focus ? ts.findIndex((t) => t.kind === focus.topic.kind && t.label === focus.topic.label) : -1; return ts.length ? present(ts[(at + 1) % ts.length]) : menu(); }
         case "each": if (!focus || focus.item) return null; walking = true; return present(focus.topic, focus.topic.items[0]);

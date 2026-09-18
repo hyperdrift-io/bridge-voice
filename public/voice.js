@@ -31,8 +31,11 @@
     ].join(" "),
     input: {
       transcription_mode: "min_latency",
-      turn_detection: { min_silence: 200, max_silence: 500 }, // measured 2026-09-03: ~1 s faster than adaptive for short commands
-      keyterms: ["revela", "hyper-cv", "intel", "web3-capital", "mcp-maker", "Commander", "First Officer"],
+      // Measured 2026-09-03: ~1 s faster than adaptive for short commands. Re-measured 2026-09-18 over six spaced spoken turns:
+      // this setting answered in 1.6–2.1 s; the docs' default (adaptive, balanced) answered in 3.6–4.6 s. Keep it.
+      turn_detection: { min_silence: 200, max_silence: 500 },
+      // Ship names, plus the short command words min_latency mishears most ("menu" came back as "Many" on 4 of 6 turns).
+      keyterms: ["revela", "hyper-cv", "intel", "web3-capital", "mcp-maker", "Commander", "First Officer", "menu", "park it", "go for it", "the fixes", "the reads", "hackathon"],
     },
     output: { voice: "anna" },
     tools: [

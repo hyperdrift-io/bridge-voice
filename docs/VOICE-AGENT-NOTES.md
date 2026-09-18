@@ -165,3 +165,22 @@ relevant part of UI so voice control visual and there is a relationship."
   and the officer's own surface, and left focus mode on, so the next turn showed one card while four were being discussed.
 - **A stale island behind a fresh page looks exactly like a logic bug.** An hour went into "the UI does not move" that was
   a cached `voice.js`. The host now sends `no-store` and the island's files carry a content stamp in their URL.
+
+## The goal script, and the settings, re-measured (2026-09-18)
+
+- **The goal's own script** (open → why → next → do it → free question → yes), spoken through the real page:
+  answers at 1.6–2.6 s, the free question at 2.6 s (its answer comes from the gateway). "Why?" straight after the
+  opening now answers about the agenda itself ("Nothing is on the table yet. The voice hackathon deadline is the most
+  pressing, because…") instead of repeating the menu.
+- **Turn detection, A/B over six spaced turns each** (`mic-test.mjs --session`):
+
+  | Setting | Speech detected after | Answer starts after |
+  |---|---|---|
+  | `min_latency`, `min_silence 200` / `max_silence 500` (ours) | 0.68–1.02 s | **1.57–2.05 s** |
+  | adaptive (no `turn_detection`), `balanced` (the docs' advice) | 0.53–2.36 s | 3.65–4.65 s |
+
+  The docs' default fails the ~2 s bar by two seconds. Ours stays.
+- **Drift is intermittent, not ours.** Two sessions of about fourteen today saw speech detection climb from ~0.8 s to
+  2–3.6 s over a minute or two; the same settings and audio pacing (sent audio stays ~15 ms ahead of the wall clock)
+  held steady in the others. Watch for it on the founder's run; it is the one number we cannot move.
+- `min_latency` misheard "menu" as "Many" on four of six turns; short command words are now key terms.
