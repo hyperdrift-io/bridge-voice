@@ -150,3 +150,18 @@ After the founder's verdict ("I can't have a conversation with it"), the convers
   Tested offline (`scripts/llm.test.mjs`) and over local HTTP. **Not yet run against the platform**: it needs a public
   HTTPS host. Open questions for that first run: does this account accept a custom `llm`, are `conversation.message`
   system messages forwarded to it, and does a bare `reply.create` call it with no user message.
+
+## The screen has to answer too (2026-09-18)
+
+Founder, on the rebuilt conversation: "the UI doesn't update according to voice command, every command should trigger the
+relevant part of UI so voice control visual and there is a relationship."
+
+- **Every line now carries a view** of what is on the table (`watch.js`), and `cockpit.js` puts it on screen: the topic,
+  its evidence as it is read, and the choices as buttons that go through the same conversation as the spoken words.
+- **The Bridge answers as well**: ships under discussion are marked and the rest recede, via one attribute on `<html>` and
+  one per ship. A topic with no ship (a contest, a set of fixes) dims the whole fleet, which reads as "this is not about
+  the ships" — and on the live Bridge its own panel is marked and scrolled to.
+- **A ship's panel opens only when asked** ("show me revela"). Opening it for an item on the table buried both the fleet
+  and the officer's own surface, and left focus mode on, so the next turn showed one card while four were being discussed.
+- **A stale island behind a fresh page looks exactly like a logic bug.** An hour went into "the UI does not move" that was
+  a cached `voice.js`. The host now sends `no-store` and the island's files carry a content stamp in their URL.

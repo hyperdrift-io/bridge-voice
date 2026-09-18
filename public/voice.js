@@ -62,6 +62,9 @@
     <form><input name="say" autocomplete="off" placeholder="…or type to the officer" aria-label="Type to the officer"></form>
     <p>The officer opens with what matters. <q>why?</q> · <q>do it</q> · <q>next</q> · <q>the brief</q> · <q>show me intel</q> · or ask anything.</p>`;
   document.body.append(dock);
+  // The screen follows the conversation: what is on the table is shown, the ships being discussed are marked, and the
+  // choices are buttons that go through the very same conversation as the spoken words.
+  const cockpit = globalThis.officerCockpit.create({ dock, bridge: window.bridge, showFleet: () => showFleet(), onChoice: (words) => typed(words) });
   const button = dock.querySelector("button");
   const out = dock.querySelector("output");
   const meter = dock.querySelector("meter");
@@ -155,6 +158,7 @@
     showMic({ state: "off", text: "", level: 0 });
     if (ctx) { ctx.close(); ctx = null; }
     setState(state, text);
+    cockpit.clear();
   }
   button.addEventListener("click", () => (ws ? end() : start()));
   form.addEventListener("submit", (e) => {
@@ -226,7 +230,7 @@
     try { await loadAgenda(); } catch (err) { sayExactly(`Captain, I could not load the agenda: ${err.message}. Would you ask me about a ship instead?`); return; }
     interruptsSince = agenda.generated || new Date().toISOString();
     const opening = watch.open();
-    showFor(opening.ui);
+    cockpit.show(opening);
     if (agentId) { // the officer is the model: hand it the cockpit's facts once, then let it open the watch itself
       send({ type: "conversation.message", role: "system", content: `FLEET_FACTS ${JSON.stringify({ ships: ships().map(shipFacts), fleet: TOOLS.read_commander({}) })}` });
       send({ type: "reply.create" });
@@ -322,12 +326,16 @@
     const turnOf = await watch.converse(words, { proposal: Boolean(proposal) }); // the order of the turn lives in watch.js
     switch (turnOf.kind) {
       case "proposal-yes": pendingProposal = proposal; return mirror ? {} : acceptProposal();
-      case "watch": showFor(turnOf.ui); if (turnOf.close) closing = true; return turnOf;
+      case "watch": cockpit.show(turnOf); if (turnOf.close) { closing = true; cockpit.clear(); } return turnOf; // the cockpit owns the screen now
       case "cockpit": {
         const r = turnOf.route;
         if (r.intent === "navigate") { const f = TOOLS.navigate({ target: r.target }); return { ...f, say: f.error || f.done }; }
         const f = r.intent === "read" ? TOOLS.read_commander({ ship: r.ship }) : TOOLS.open_ship({ ship: r.ship });
-        return f.error ? { say: f.error } : { ...f, say: r.intent === "read" ? globalThis.officerWatch.readLine(f) : globalThis.officerWatch.shipLine(f) };
+        if (f.error) return { say: f.error };
+        const say = r.intent === "read" ? globalThis.officerWatch.readLine(f) : globalThis.officerWatch.shipLine(f);
+        // Asked to see a ship: its own panel opens, and the officer's surface says what it is reading out.
+        cockpit.show({ view: { kind: "ship", label: f.ship, headline: f.read_line || "", lines: [f.stage && `Stage: ${f.stage}`, f.constraint && `Constraint: ${f.constraint}`, f.visitors && `Visitors: ${f.visitors}`].filter(Boolean), options: ["back to the agenda"], ships: [f.ship], modal: true } });
+        return { ...f, say };
       }
       default: // a real question: the brain's (in mirror mode the officer-as-LLM endpoint answers it; the cockpit only follows)
         if (mirror) { if (turnOf.ship && findShip(turnOf.ship)) showFor({ ship: turnOf.ship }); mirrorAsked = true; return {}; }

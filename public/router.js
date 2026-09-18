@@ -26,7 +26,7 @@
     [/^(thanks|thank you|cheers)\b/, (t) => (few(t, 3) ? { intent: "thanks" } : null)],
     [/\b(you choose|you pick|you decide|your call|what do you (recommend|suggest|think)|what would you do|what should (i|we) do|your (recommendation|advice|opinion|view)|which (one|way) would you|what's your (take|view|call))\b/, (t) => (few(t, 6) ? { intent: "recommend" } : null)],
     [/^(more|go on|tell me more|continue|keep going|details?|and then|carry on|what('s| is) (that|it|this)( all)? about|tell me about (it|that)|what do you mean|meaning|such as)\b/, () => ({ intent: "more" })],
-    [/\b(menu|what are (my|the) (options|choices)|what('s| is) left|what else is there|what else (do|have) (we|you) (have|got)|back to the (agenda|list|menu)|the list|the other (ones|things))\b/, () => ({ intent: "menu" })],
+    [/\b(back to the agenda|menu|what are (my|the) (options|choices)|what('s| is) left|what else is there|what else (do|have) (we|you) (have|got)|back to the (agenda|list|menu)|the list|the other (ones|things))\b/, () => ({ intent: "menu" })],
     [/\b(one by one|go through them|one at a time|walk me through( them)?|each of them)\b/, () => ({ intent: "each" })],
     [/^(why|how come|explain|what('s| is) the (evidence|reason)|because)\b/, () => ({ intent: "why" })],
     [/\b(brief(ing)?|summary|summar(ise|ize)|overview|what('s| is) on the agenda|the agenda)\b/, () => ({ intent: "brief" })],

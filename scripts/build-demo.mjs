@@ -9,10 +9,11 @@
 //   2. rewrites each ship's headline line to its Commander read line
 //   3. inlines the last recorded Commander read per ship as #bridge-reads
 //   4. exposes the page's own functions as window.bridge (the script is one IIFE)
-//   5. attaches the voice island as files (router.js, mic.js, watch.js, voice.js, voice.css), dropping any copy the renderer inlined
+//   5. attaches the voice island as files (router.js, mic.js, watch.js, cockpit.js, voice.js, voice.css), dropping any copy the renderer inlined
 // It prints a scrub report; the founder reads it before the file goes anywhere public.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 
 const args = process.argv.slice(2);
@@ -148,14 +149,16 @@ if (!html.includes("window.bridge = {")) {
   html = html.slice(0, iifeEnd) + exportLine + html.slice(iifeEnd);
 }
 
-// 5. Attach the voice island: exactly one, as files next to the page (public/router.js, mic.js, watch.js, voice.js, voice.css), so the
+// 5. Attach the voice island: exactly one, as files next to the page (public/router.js, mic.js, watch.js, cockpit.js, voice.js, voice.css), so the
 // snapshot never goes stale against the island. A Bridge rendered with BRIDGE_VOICE on already carries an inlined copy;
 // the scrub strips that copy's <form>, which kills its script half-way (seen 2026-09-09: two docks, one dead). Drop it.
 html = html.replace(/<style>\s*\/\* Bridge Voice dock[\s\S]*?<\/style>\s*/g, "").replace(/<script>\s*\/\/ The officer's ear[\s\S]*?<\/script>\s*/g, "");
-html = html.replace("</head>", `<meta name="robots" content="noindex">\n<link rel="stylesheet" href="voice.css">\n</head>`);
+// The island's files carry a content stamp: a judge's browser (or the founder's, mid-test) can never mix a new page with a cached old island.
+const stamp = createHash("sha256").update(["router.js", "mic.js", "watch.js", "cockpit.js", "voice.js", "voice.css"].map((f) => readFileSync(join("public", f))).join("")).digest("hex").slice(0, 8);
+html = html.replace("</head>", `<meta name="robots" content="noindex">\n<link rel="stylesheet" href="voice.css?v=${stamp}">\n</head>`);
 html = html.replace(
   "</body>",
-  `<script type="application/json" id="bridge-reads">${JSON.stringify(reads)}</script>\n<script src="router.js"></script>\n<script src="mic.js"></script>\n<script src="watch.js"></script>\n<script src="voice.js"></script>\n</body>`
+  `<script type="application/json" id="bridge-reads">${JSON.stringify(reads)}</script>\n<script src="router.js?v=${stamp}"></script>\n<script src="mic.js?v=${stamp}"></script>\n<script src="watch.js?v=${stamp}"></script>\n<script src="cockpit.js?v=${stamp}"></script>\n<script src="voice.js?v=${stamp}"></script>\n</body>`
 );
 
 mkdirSync(dirname(out), { recursive: true });

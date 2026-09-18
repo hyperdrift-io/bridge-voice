@@ -136,13 +136,13 @@ while (Date.now() - started < runFor + 3000) {
   }
   if (all.some((e) => e.ev === "ws.close" || e.ev === "session.ended")) break;
 }
-const dockSays = await evaluate("location.href + ' | ' + document.querySelector('#voice').dataset.state + ' | mic ' + document.querySelector('#voice').dataset.mic + ' | ' + document.querySelector('#voice').innerText.replace(/\\n+/g, ' / ')");
+const dockSays = await evaluate("JSON.stringify({ state: document.querySelector('#voice').dataset.state, mic: document.querySelector('#voice').dataset.mic, table: (document.querySelector('#voice section') || {}).innerText, marks: [...document.querySelectorAll('.ship')].map(s => s.dataset.app + ':' + (s.dataset.officer || '-')).join(' '), topic: document.documentElement.dataset.officer })");
 await evaluate("(() => { const b = document.querySelector('#voice button'); if (document.querySelector('#voice').dataset.state !== 'ended') b.click(); })()");
 await sleep(800);
 
 // ── Verdict per spoken turn ──────────────────────────────────────────────────────────────────────────────────
 all.sort((a, b) => a.t - b.t);
-console.log(`\ndock at the end: ${dockSays}`);
+console.log(`\ndock at the end: ${String(dockSays).replace(/\\n+/g, " / ")}`);
 const sent = all.filter((e) => e.ev === "mic.sent");
 console.log(`mic: ${all.find((e) => e.ev === "mic.open")?.text || all.find((e) => e.ev === "mic.error")?.text || "never opened"}`);
 console.log(`audio sent: ${sent.map((e) => e.text.replace(" chunks, peak ", "/").replace(", ahead ", " +")).join("  ")}  (chunks/peak per 5 s, then audio sent ahead of the wall clock)`);

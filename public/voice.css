@@ -35,6 +35,15 @@
 #voice:is([data-mic="blocked"], [data-mic="silent"], [data-mic="unheard"], [data-mic="stalled"]) small { color: #ffb4a8; opacity: 1; }
 #voice input { width: 100%; box-sizing: border-box; padding: 0.55rem 0.8rem; border: 1px solid rgb(255 255 255 / 0.14); border-radius: 0.6rem; background: rgb(255 255 255 / 0.06); color: inherit; font: inherit; }
 #voice input::placeholder { color: inherit; opacity: 0.5; }
+/* What is on the table: the officer's own surface, so a topic with no panel on this page still shows. */
+#voice section { display: grid; gap: 0.4rem; padding-top: 0.55rem; border-top: 1px solid rgb(255 255 255 / 0.12); }
+#voice h3 { margin: 0; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.01em; }
+#voice section p { margin: 0; font-size: 0.9rem; opacity: 0.9; }
+#voice ul { margin: 0; padding-left: 1.1em; display: grid; gap: 0.25rem; font-size: 0.82rem; opacity: 0.75; }
+#voice li::marker { color: #e8b04b; }
+#voice nav { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+#voice nav button { padding: 0.3rem 0.7rem; border: 1px solid rgb(232 176 75 / 0.5); border-radius: 999px; background: none; color: #e8b04b; font-size: 0.8rem; font-weight: 500; }
+#voice nav button:hover { background: rgb(232 176 75 / 0.14); }
 #voice output { min-height: 1.4em; font-size: 0.95rem; line-height: 1.4; }
 #voice output:empty { display: none; }
 #voice p { margin: 0; font-size: 0.8rem; opacity: 0.65; }
@@ -42,4 +51,12 @@
 #voice q::before, #voice q::after { content: "“"; }
 #voice q::after { content: "”"; }
 @keyframes voice-pulse { 50% { box-shadow: 0 0 0 0.6rem rgb(75 208 138 / 0.18); } }
+/* The Bridge answers too: the ships under discussion come forward, the rest recede. */
+html[data-officer] .ship:not([data-officer]) { opacity: 0.35; filter: saturate(0.4); }
+html[data-officer] .ship { transition: opacity 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease; }
+.ship[data-officer] { box-shadow: 0 0 0 1px rgb(232 176 75 / 0.55); }
+[data-officer="panel"] { box-shadow: 0 0 0 2px rgb(232 176 75 / 0.5); border-radius: 0.8rem; }
+.ship[data-officer="focus"] { box-shadow: 0 0 0 2px #e8b04b, 0 0.6rem 1.8rem rgb(232 176 75 / 0.22); }
+@media (prefers-reduced-motion: reduce) { html[data-officer] .ship { transition: none; } }
+
 @media (max-width: 40rem) { #voice { inset: auto 0.75rem 0.75rem 0.75rem; max-width: none; } }

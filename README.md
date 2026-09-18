@@ -33,7 +33,9 @@ npm run smoke                        # socket-only gate from Node: token → soc
 ```
 
 Open http://127.0.0.1:8787 in Chrome and allow the microphone, or add `#text` to type instead.
-The dock always shows the mic's state: listening, hearing, heard, or what is in the way.
+The dock always shows the mic's state: listening, hearing, heard, or what is in the way — and what is on the
+table: the topic, its evidence as it is read, and the choices as buttons that go through the same conversation.
+The Bridge answers every turn: the ships under discussion come forward and the rest recede.
 
 Refresh the snapshot from the monorepo:
 
@@ -76,6 +78,7 @@ spoken-path gate against the public URL from a browser that has never seen the p
 ```
 public/index.html        frozen, scrubbed Bridge snapshot that loads the officer's files (built, gitignored until approved)
 public/router.js         the officer's ear and mouth: words → one intent, lines made sayable (tests: scripts/router.test.mjs)
+public/cockpit.js        the officer's hands: what is on the table, and the Bridge moved to match
 public/watch.js          the conversation itself: the officer offers, the captain chooses (pure; tests: scripts/watch.test.mjs)
 public/mic.js            the microphone: capture → 24 kHz PCM16, and the health read the dock shows
 public/voice.js          the island: session, playback, the watch, the single tool, cockpit tools

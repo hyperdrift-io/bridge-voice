@@ -76,6 +76,11 @@ roadmap is a bonus.
 - The conversation is `public/watch.js`: pure, tested offline, shared by the browser and by `api/voice/llm.js`
   (the officer as the model, for AssemblyAI's own-LLM stored agents). The order of a turn lives in
   `watch.converse`; change it there or the two callers drift apart.
+- **The screen answers every turn** (founder, 2026-09-18). Each line carries a view of what is on the table;
+  `public/cockpit.js` shows it and moves the Bridge to match. A ship's own panel opens only when the captain
+  asks to see it. Never leave the fleet in focus mode or behind a panel the conversation has moved on from.
+- The island's files are served with a content stamp (`?v=…`) and the host sends `no-store`: a cached island
+  behind a fresh page cost an hour on 2026-09-18 and looked exactly like a logic bug.
 - Every line the officer speaks ends on a question and passes through
   `officerForEar` (dates a person would say, no symbols).
 - `public/mic.js` owns capture and mic health; the dock always shows one of

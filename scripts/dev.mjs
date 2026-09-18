@@ -70,5 +70,6 @@ createServer(async (req, res) => {
   if (process.env.API_ONLY) { res.writeHead(404).end("api only"); return; }
   const file = join("public", url.pathname === "/" ? "index.html" : url.pathname);
   if (!existsSync(file)) { res.writeHead(404).end("not found"); return; }
-  res.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream" }).end(readFileSync(file));
+  // No caching: a judge (or the founder mid-test) must never get yesterday's page or a stale island.
+  res.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream", "cache-control": "no-store" }).end(readFileSync(file));
 }).listen(PORT, process.env.HOST || "127.0.0.1", () => console.log(`bridge-voice → http://127.0.0.1:${PORT}  (key ${process.env.ASSEMBLYAI_API_KEY ? "set" : "MISSING"})`));

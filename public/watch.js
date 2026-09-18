@@ -43,7 +43,15 @@
       }
       return out;
     }
-    const say = (text, ui) => { last = text; return { say: text, ui: ui || (focus && focus.item && focus.item.ui) || null }; };
+    // Every line carries the view: what is on the table right now. The cockpit (public/cockpit.js) shows it and moves the
+    // Bridge to match, so the screen always answers the last thing said (founder, 2026-09-18).
+    function view() {
+      if (!focus) return { kind: "menu", label: items.length ? "On the agenda" : "The agenda is clear", lines: topics().map((t) => t.label), options: [], ships: items.map((i) => i.ship).filter(Boolean) };
+      if (!focus.item) return { kind: focus.topic.kind, label: focus.topic.label, lines: focus.topic.items.map(label), options: [allOf(focus.topic), focus.topic.kind === "read" ? "pick a ship" : "go through them", "park them"], ships: focus.topic.items.map((i) => i.ship).filter(Boolean), ui: focus.topic.items[0].ui || null };
+      const it = focus.item;
+      return { kind: it.kind, label: label(it), headline: it.headline, lines: it.why.slice(0, whyAt), options: it.options.map((o) => (VERBS[o] || { offer: o }).offer), ships: [it.ship].filter(Boolean), ui: it.ui || null };
+    }
+    const say = (text, ui) => { last = text; return { say: text, ui: ui || (focus && focus.item && focus.item.ui) || null, view: view() }; };
     const allOf = (topic) => (VERBS[topic.items[0].default] || VERBS.approve).offer.replace(" it", " them all");
     const groupOffers = (topic) => (topic.kind === "read" ? choices([allOf(topic), "pick a ship", "park them"]) : choices([allOf(topic), "go through them", "park them"]));
     const onTable = (withWhy) => (focus.item ? offers(focus.item, withWhy) : groupOffers(focus.topic)); // the choices for whatever is in focus
