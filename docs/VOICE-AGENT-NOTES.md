@@ -184,3 +184,23 @@ relevant part of UI so voice control visual and there is a relationship."
   2–3.6 s over a minute or two; the same settings and audio pacing (sent audio stays ~15 ms ahead of the wall clock)
   held steady in the others. Watch for it on the founder's run; it is the one number we cannot move.
 - `min_latency` misheard "menu" as "Many" on four of six turns; short command words are now key terms.
+
+## Fifth session (2026-09-24): the officer as the model, on the platform
+
+The founder logged into gcloud, so the API-only container went to Cloud Run (`bridge-voice-api`, project
+`hyperdrift-distribution`; no page, the snapshot excluded by `.gcloudignore`) and `scripts/agent.mjs create` made the
+stored agent whose `llm` is that host's `/api/voice/llm`. The account accepts a custom `llm` block.
+
+- **A bare `reply.create` on session.ready produced our opening line verbatim.** No tool, no prompt, no model in
+  between: the endpoint decided the line and the platform spoke it.
+- **Spoken turns reach the endpoint.** Four turns (why → yes → the fixes → hand them all over), each answered with
+  exactly the line the browser would have produced; the island mirrored the conversation and recorded the decision
+  once. **End of speech → answer audio: 1.37–1.93 s**, and the first sound *is* the answer (no filler, no tool call).
+- **Barge-in survived.** "Yes" spoken over the last word of the previous line trimmed that line's transcript and was
+  still answered correctly, the case that made the managed model re-read old lines.
+- **Injected `conversation.message` user turns are not handed to a custom model** (a typed "why" got the opening
+  again), so typed mode (`#text`) stays on the managed session; the agent binds only when the mic is in use.
+- The socket-only probe: 156 ms from the typed turn to first audio.
+
+Latency budget on this path is the platform's STT and TTS plus one HTTPS round trip to Cloud Run (~50 ms from
+europe-west1); the endpoint itself answers in under 10 ms.

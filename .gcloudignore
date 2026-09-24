@@ -12,3 +12,5 @@ pnpm-lock.yaml
 pnpm-workspace.yaml
 *.log
 .DS_Store
+# API-only deploys never carry the snapshot: it goes public only after the founder approves the scrub.
+public/index.html

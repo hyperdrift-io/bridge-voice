@@ -116,7 +116,7 @@
   async function start() {
     setState("connecting", "");
     try {
-      const token = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); }).then((j) => { agentId = j.agent_id || null; return j.token; });
+      const token = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); }).then((j) => { agentId = TEXT_ONLY ? null : j.agent_id || null; return j.token; }); // typed turns are injected messages, which a custom model is not handed (2026-09-24): typing stays on the managed session
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       let ready = false;
       if (!TEXT_ONLY) mic = await globalThis.officerMic.open({ ctx, rate: SAMPLE_RATE, onHealth: showMic, onChunk: (pcm) => { if (ready) send({ type: "input.audio", audio: b64(pcm) }); } });

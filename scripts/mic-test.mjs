@@ -4,6 +4,7 @@
 // Prints a timeline and, per spoken turn, last loud mic chunk → tool.call → first answer audio.
 //   node scripts/mic-test.mjs "why@16" "next@34"        utterance@seconds-after-the-mic-opens
 //   node scripts/mic-test.mjs --tail 12 --headed "why@16"
+//   OFFICER_AGENT_ID=agent_… node scripts/mic-test.mjs "why@16"   the own-LLM path: the island binds to the stored agent
 // Opens a paid AssemblyAI session for as long as the schedule runs. Zero dependencies (CDP over Node's WebSocket).
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
@@ -151,6 +152,7 @@ const sent = all.filter((e) => e.ev === "mic.sent");
 console.log(`mic: ${all.find((e) => e.ev === "mic.open")?.text || all.find((e) => e.ev === "mic.error")?.text || "never opened"}`);
 console.log(`audio sent: ${sent.map((e) => e.text.replace(" chunks, peak ", "/").replace(", ahead ", " +")).join("  ")}  (chunks/peak per 5 s, then audio sent ahead of the wall clock)`);
 let fail = false;
+const agentMode = Boolean(process.env.OFFICER_AGENT_ID); // the local host hands the island a stored agent: no tool calls, the officer is the model
 const ends = all.filter((e) => e.ev === "mic.loud.end");
 turns.forEach((turn, i) => {
   const expected = micOpenAt + (turn.at + turn.seconds) * 1000;
@@ -160,11 +162,13 @@ turns.forEach((turn, i) => {
   const detected = begin && after("input.speech.started", begin.t);
   const heard = end && after("transcript.user", end.t - 3000);
   const tool = end && after("tool.call", end.t);
-  const answer = tool && after("reply.audio.first", tool.t);
   const firstSound = end && after("reply.audio.first", end.t);
+  // With a tool, the first sound is the filler and the answer follows the tool call; with the officer as the model
+  // (a stored own-LLM agent, no tool) the first sound is the answer itself.
+  const answer = tool ? after("reply.audio.first", tool.t) : agentMode ? firstSound : null;
   const line = answer && after("transcript.agent", answer.t);
-  if (!heard || !tool || !answer) fail = true;
-  console.log(`turn ${i + 1} "${turn.text}": heard ${heard ? JSON.stringify(heard.text) : "NOTHING"} · start of speech → service detects it ${detected ? detected.t - begin.t + " ms" : "—"} · end of speech → tool.call ${tool ? tool.t - end.t + " ms" : "—"} · → first sound ${firstSound ? firstSound.t - end.t + " ms" : "—"} · → answer audio ${answer ? answer.t - end.t + " ms" : "—"}${line ? `\n        officer: ${JSON.stringify(line.text)}` : ""}`);
+  if (!heard || !answer) fail = true;
+  console.log(`turn ${i + 1} "${turn.text}": heard ${heard ? JSON.stringify(heard.text) : "NOTHING"} · start of speech → service detects it ${detected ? detected.t - begin.t + " ms" : "—"} · end of speech → ${agentMode ? "answer audio" : "tool.call"} ${tool ? tool.t - end.t + " ms" : answer ? answer.t - end.t + " ms" : "—"}${agentMode ? "" : ` · → first sound ${firstSound ? firstSound.t - end.t + " ms" : "—"} · → answer audio ${answer ? answer.t - end.t + " ms" : "—"}`}${line ? `\n        officer: ${JSON.stringify(line.text)}` : ""}`);
 });
 cleanup();
 setTimeout(() => process.exit(fail ? 1 : 0), 700);

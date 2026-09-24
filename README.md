@@ -47,18 +47,23 @@ cd - && npm run build:demo -- /tmp/bridge.html --reads ~/dev/hyperdrift/.nightcr
 The build scrubs private surfaces and prints a report. `public/index.html` is
 the frozen result and stays out of git until the founder has read that report.
 
-## The officer as the model (own-LLM path)
+## The officer as the model (own-LLM path, live since 2026-09-24)
 
 The managed session model goes off script when a turn leaves the happy path (notes, fourth session). AssemblyAI lets a
-stored agent call your own OpenAI-compatible endpoint for every reply, so the officer can be the model:
+stored agent call your own OpenAI-compatible endpoint for every reply, so the officer is the model: the API-only host
+`bridge-voice-api` on Cloud Run serves `/api/voice/llm`, the stored agent points at it, and the island binds to that
+agent whenever the microphone is in use. Answers start 1.4–1.9 s after the captain stops, with no model in between.
 
 ```bash
-# .env on a public HTTPS host: ASSEMBLYAI_API_KEY, OFFICER_LLM_KEY=<long random>, optional ANTHROPIC_API_KEY
-node scripts/agent.mjs create https://<public-host>     # prints the agent id
-# add OFFICER_AGENT_ID=<id> to .env and restart: the token endpoint hands it to the island, which binds to the agent
+# .env: ASSEMBLYAI_API_KEY, OFFICER_LLM_KEY=<long random>, OFFICER_AGENT_ID=<from create>; optional ANTHROPIC_API_KEY
+gcloud run deploy bridge-voice-api --source . --clear-base-image --project hyperdrift-distribution --region europe-west1 \
+  --allow-unauthenticated --max-instances 2 --set-env-vars "ASSEMBLYAI_API_KEY=…,OFFICER_LLM_KEY=…,API_ONLY=1,CREW_API=0"
+node scripts/agent.mjs create https://bridge-voice-api-294160018950.europe-west1.run.app   # once; then OFFICER_AGENT_ID in .env
+OFFICER_AGENT_ID=agent_… node scripts/mic-test.mjs "why@16" "yes@30"                        # the spoken gate on this path
 ```
 
-Without `OFFICER_AGENT_ID` the island configures the session itself and uses the managed model, as before.
+Typed turns (`#text`) are injected messages, which the platform does not hand a custom model, so typing stays on the
+managed session. Without `OFFICER_AGENT_ID` the island configures the session itself and uses the managed model.
 
 ## Deploy for judges
 
@@ -66,11 +71,12 @@ Only after the founder has read the scrub report and approved the snapshot (`AGE
 page, the officer's files and `/api/voice/*`; sessions stay capped at 300 s and the key stays server-side.
 
 ```bash
-gcloud run deploy bridge-voice --source . --region europe-west1 --allow-unauthenticated \
-  --max-instances 2 --set-env-vars ASSEMBLYAI_API_KEY=… --project <project>
+# remove the public/index.html line from .gcloudignore first, then:
+gcloud run deploy bridge-voice --source . --clear-base-image --project hyperdrift-distribution --region europe-west1 \
+  --allow-unauthenticated --max-instances 2 --set-env-vars "ASSEMBLYAI_API_KEY=…,OFFICER_LLM_KEY=…,OFFICER_AGENT_ID=…,CREW_API=0"
 ```
 
-`.gcloudignore` keeps `.env` out of the upload and lets the gitignored `public/index.html` in. Then run the
+`.gcloudignore` keeps `.env` out of the upload; its `public/index.html` line keeps the snapshot out of API-only deploys. Then run the
 spoken-path gate against the public URL from a browser that has never seen the page.
 
 ## Layout

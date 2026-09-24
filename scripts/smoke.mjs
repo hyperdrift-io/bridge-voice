@@ -103,7 +103,8 @@ ws.onmessage = ({ data }) => {
     case "session.ready":
       console.log(stamp(), "session.ready voice=" + ev.config?.output?.voice, "tools=" + (ev.config?.tools || []).length);
       if (AGENT_ID && WATCH) {
-        ws.send(JSON.stringify({ type: "reply.create", instructions: "Open the watch: call the open tool, then say its 'say' text word for word." }));
+        // An own-LLM agent: the officer is the model, so a bare reply.create must produce the opening line by itself.
+        ws.send(JSON.stringify({ type: "reply.create" }));
       } else if (WATCH) {
         fetch(`${DEMO}/api/voice/agenda`).then((r) => r.json()).then((a) => {
           const top = a.items.slice(0, 8).map((i) => `${i.rank}. [${i.kind}${i.ship ? " " + i.ship : ""}] ${i.headline} Options: ${i.options.join("/")} (default ${i.default}).`);

@@ -61,6 +61,9 @@ export default async function handler(req, res) {
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); res.status(405).json({ error: "POST only" }); return; }
   const started = Date.now();
   const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-200) : [];
+  // What the platform hands a custom model is not documented in detail; the shape of each request (roles and lengths,
+  // never the words) goes to stdout so a host's logs can settle it. First platform run 2026-09-24: see the notes.
+  console.log(`[llm] ${messages.map((m) => `${m.role}:${text(m.content).length}`).join(" ")} stream=${req.body?.stream !== false}`);
   const say = await reply(messages);
   if (process.env.LLM_LOG) appendFileSync(process.env.LLM_LOG, `${JSON.stringify({ ts: new Date().toISOString(), ms: Date.now() - started, request: req.body, say })}\n`);
   const chunk = (delta, finish_reason = null) => `data: ${JSON.stringify({ id: `officer-${started}`, object: "chat.completion.chunk", created: Math.floor(started / 1000), model: req.body?.model || "first-officer", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;

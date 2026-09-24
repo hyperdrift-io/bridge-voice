@@ -73,6 +73,9 @@ roadmap is a bonus.
   result carries `say`, and the model reads it back verbatim. The model gets
   `{say}` and nothing else. No literal example ever goes in a tool
   description (the model copies it).
+- **The shipped voice path is the officer as the model** (2026-09-24): a stored AssemblyAI agent whose LLM is
+  `api/voice/llm.js` on the Cloud Run host `bridge-voice-api`. The island binds to it when the mic is in use;
+  typed mode stays on the managed session. `OFFICER_LLM_KEY` guards the endpoint; keep the two hosts' keys equal.
 - The conversation is `public/watch.js`: pure, tested offline, shared by the browser and by `api/voice/llm.js`
   (the officer as the model, for AssemblyAI's own-LLM stored agents). The order of a turn lives in
   `watch.converse`; change it there or the two callers drift apart.
