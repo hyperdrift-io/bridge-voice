@@ -101,6 +101,9 @@ PROPOSAL: {"kind": "note|mission|read|none", "title": "<one line>", "ask": "<Sha
   if (m) { try { proposal = JSON.parse(m[1]); } catch { proposal = null; } say = say.slice(0, m.index).trim(); }
   if (proposal && (!proposal.kind || proposal.kind === "none")) proposal = null;
   if (proposal) proposal = { kind: String(proposal.kind), title: String(proposal.title || "").slice(0, 160), ask: String(proposal.ask || "Shall I?").slice(0, 120), ship, question };
+  // The answer already ends on the proposal's question often enough ("…Shall I run the read now?"): then the ask is
+  // the same question twice out loud (heard 2026-09-24). One question per line.
+  if (proposal && /\?\s*$/.test(say)) { const last = say.match(/[^.?!]+\?\s*$/); if (last) { proposal.ask = last[0].trim(); say = say.slice(0, last.index).trim(); } }
   return { skill, ship, model, say, proposal };
 }
 

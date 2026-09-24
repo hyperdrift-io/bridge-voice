@@ -5,9 +5,10 @@
 //   node scripts/mic-test.mjs "why@16" "next@34"        utterance@seconds-after-the-mic-opens
 //   node scripts/mic-test.mjs --tail 12 --headed "why@16"
 //   OFFICER_AGENT_ID=agent_… node scripts/mic-test.mjs "why@16"   the own-LLM path: the island binds to the stored agent
+//   OFFICER_AGENT_ID=agent_… node scripts/mic-test.mjs --live --take <dir>   the founder's own take: real mic, headed Chrome; ends on the goodbye
 // Opens a paid AssemblyAI session for as long as the schedule runs. Zero dependencies (CDP over Node's WebSocket).
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,11 +18,15 @@ const TAIL_S = Number(flag("--tail", 14)); // listen this long after the last ut
 const PORT = Number(flag("--port", 8799));
 const CDP_PORT = Number(flag("--cdp", 9377));
 const HEADED = argv.includes("--headed");
-const SESSION_PATCH = JSON.parse(flag("--session", "null")); // test a session setting without touching the island: merged into the island's own session.update
+const SESSION_PATCH = JSON.parse(flag("--session", "null"));
+const LIVE = argv.includes("--live"); // the founder's own take: a headed Chrome, the real microphone, no schedule; the rig records the page, the officer and the mic
+const MAX_S = Number(flag("--max", 240)); // a live take ends when the session ends (a goodbye), or here
+const TAKE = flag("--take", ""); // record a take: 2x screencast frames, the officer's audio per reply and live captions → <dir>; assemble with scripts/assemble-take.mjs
+if (TAKE) mkdirSync(join(TAKE, "frames"), { recursive: true }); // test a session setting without touching the island: merged into the island's own session.update
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const RATE = 48000;
 const turns = argv.filter((a) => /@\d/.test(a)).map((a) => { const at = a.lastIndexOf("@"); return { text: a.slice(0, at), at: Number(a.slice(at + 1)) }; });
-if (!turns.length) turns.push({ text: "why", at: 16 });
+if (!turns.length && !LIVE) turns.push({ text: "why", at: 16 });
 
 // ── The microphone: silence, with each utterance (macOS `say`) dropped in at its second ──────────────────────
 const dir = mkdtempSync(join(tmpdir(), "bridge-voice-mic-"));
@@ -34,8 +39,10 @@ function pcmOf(file) {
   }
   throw new Error(`${file}: no data chunk`);
 }
-const total = Math.ceil((turns[turns.length - 1].at + TAIL_S + 10) * RATE) * 2;
+const total = LIVE ? 2 : Math.ceil((turns[turns.length - 1].at + TAIL_S + 10) * RATE) * 2;
 const pcm = Buffer.alloc(total);
+// A real microphone in a quiet room is never digital silence; without a floor the dock rightly reports "sends pure silence".
+for (let i = 0; i < total; i += 2) pcm.writeInt16LE(Math.round((Math.random() - 0.5) * 40), i);
 turns.forEach((t, i) => {
   const wav = join(dir, `u${i}.wav`);
   execFileSync("say", ["-o", wav, `--data-format=LEI16@${RATE}`, t.text]);
@@ -53,6 +60,24 @@ writeFileSync(micWav, Buffer.concat([header, pcm]));
 // ── Runs inside the page before the island: logs the mic, every socket event, and the level of what is sent ──
 const INSTRUMENT = `(() => {
   const PATCH = ${JSON.stringify(SESSION_PATCH)};
+  const TAKE = ${JSON.stringify(Boolean(TAKE))};
+  // A take keeps the officer's audio per reply (24 kHz PCM16, base64, in arrival order) with epoch times, and shows live
+  // captions: the officer's words paced to the speech, the captain's the moment they are heard. Video-only chrome.
+  window.__audio = []; let reply = null;
+  const LIVE = ${JSON.stringify(LIVE)};
+  window.__mic = { at: 0, chunks: [] }; // a live take keeps what the page sends the service: the captain's own voice, 24 kHz PCM16
+  let caption = null, captionTimer = 0;
+  const showCaption = (who, text, pace) => {
+    if (!TAKE) return;
+    if (!caption) { caption = document.createElement("div"); caption.id = "take-caption"; caption.innerHTML = "<span></span><b></b>"; document.body.append(caption); }
+    clearInterval(captionTimer);
+    caption.dataset.who = who; caption.querySelector("span").textContent = who === "officer" ? "First Officer" : "Captain";
+    const b = caption.querySelector("b");
+    if (!pace) { b.textContent = text; caption.hidden = !text; return; }
+    const words = text.split(" "); let n = 0; caption.hidden = false; b.textContent = "";
+    captionTimer = setInterval(() => { n += 1; b.textContent = words.slice(0, n).join(" "); if (n >= words.length) clearInterval(captionTimer); }, pace);
+  };
+  if (TAKE) document.addEventListener("DOMContentLoaded", () => { const st = document.createElement("style"); st.textContent = "#voice > p,#voice > small,#voice form{display:none}#take-caption{position:fixed;left:3.5rem;right:26rem;bottom:2.4rem;z-index:60;display:grid;gap:.25rem;pointer-events:none;font:inherit}#take-caption span{font-size:.85rem;letter-spacing:.06em;text-transform:uppercase;opacity:.7}#take-caption b{font-size:2rem;line-height:1.25;font-weight:600;color:#e6e9ef;text-shadow:0 2px 12px rgb(0 0 0/.7)}#take-caption[data-who=officer] span{color:#e8b04b}#take-caption[data-who=captain] span{color:#4bd08a}#take-caption[hidden]{display:none}"; document.head.append(st); });
   const merge = (a, b) => { for (const [k, v] of Object.entries(b || {})) { if (v === null) delete a[k]; else if (v && typeof v === "object" && !Array.isArray(v)) a[k] = merge(a[k] || {}, v); else a[k] = v; } return a; };
   const t0 = performance.now(), log = (window.__log = []);
   const push = (o) => log.push({ t: Math.round(performance.now() - t0), ...o });
@@ -68,8 +93,18 @@ const INSTRUMENT = `(() => {
       let audio = false, said = "";
       this.addEventListener("message", ({ data }) => {
         const m = JSON.parse(data);
-        if (m.type === "reply.audio") { if (!audio) { audio = true; push({ ev: "reply.audio.first" }); } return; }
-        if (m.type === "transcript.agent.delta") { said = m.text.length >= said.length && m.text.startsWith(said) ? m.text : said + m.text; return; }
+        if (m.type === "reply.audio") {
+          if (!audio) { audio = true; push({ ev: "reply.audio.first" }); }
+          // The words usually stream before the first audio chunk, so a new reply takes whatever has been said so far.
+          // Own-LLM replies stream no text deltas (seen 2026-09-24), but the island has worked out the same line the endpoint
+          // is about to say (mirror mode), so the caption comes from there; a managed-model reply falls back to the deltas.
+          if (TAKE) { if (!reply || reply.id !== m.reply_id) { const line = said || (window.voiceTools && window.voiceTools.mirrored && window.voiceTools.mirrored()) || ""; reply = { id: m.reply_id || String(window.__audio.length), at: Date.now() / 1000, chunks: [], text: line }; window.__audio.push(reply); if (line) showCaption("officer", line, 1000 / 2.6); } reply.chunks.push(m.audio || m.data); }
+          return;
+        }
+        if (m.type === "transcript.agent.delta") { said = m.text.length >= said.length && m.text.startsWith(said) ? m.text : said + m.text; if (reply && !reply.text) { reply.text = said; showCaption("officer", said, 1000 / 2.6); } return; }
+        if (m.type === "transcript.user") showCaption("captain", m.text, 0);
+        if (m.type === "transcript.agent" && TAKE && reply && !reply.text) { reply.text = m.text; showCaption("officer", m.text, 0); } // a line nobody could predict (the brain's): captioned as it ends
+        if (m.type === "reply.done") { if (reply) { reply.cut = Date.now() / 1000; reply.interrupted = m.status === "interrupted"; if (m.status === "interrupted") showCaption("officer", "", 0); } reply = null; }
         if (/delta$/.test(m.type)) return;
         if (m.type === "reply.started" || m.type === "reply.done") audio = false;
         if (m.type === "reply.done") { push({ ev: "reply.done", text: m.status + (said ? " · said: " + said : "") }); said = ""; return; }
@@ -83,6 +118,7 @@ const INSTRUMENT = `(() => {
       const m = JSON.parse(data);
       if (PATCH && m.type === "session.update" && m.session && !m.session.agent_id) { merge(m.session, PATCH); data = JSON.stringify(m); push({ ev: "session.patched", text: JSON.stringify(m.session.input) }); }
       if (m.type === "input.audio") {
+        if (LIVE && TAKE) { if (!window.__mic.at) window.__mic.at = Date.now() / 1000; window.__mic.chunks.push(m.audio); }
         const bin = atob(m.audio); let peak = 0;
         for (let i = 0; i + 1 < bin.length; i += 2) { const v = Math.abs((bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8)) << 16 >> 16); if (v > peak) peak = v; }
         this.chunks += 1; if (peak > this.peak) this.peak = peak;
@@ -100,9 +136,9 @@ const INSTRUMENT = `(() => {
 const server = spawn(process.execPath, ["scripts/dev.mjs"], { env: { ...process.env, PORT: String(PORT), CREW_API: "0" }, stdio: ["ignore", "pipe", "inherit"] });
 await new Promise((ok) => server.stdout.once("data", ok));
 const chrome = spawn(CHROME, [
-  ...(HEADED ? [] : ["--headless=new"]), `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${join(dir, "profile")}`, "--no-first-run", "--no-default-browser-check", "--disable-features=AudioServiceSandbox", // the sandboxed audio service cannot read the WAV (silence, no error)
-  "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${micWav}%noloop`,
-  "--autoplay-policy=no-user-gesture-required", "--mute-audio", "about:blank",
+  ...(HEADED || LIVE ? [] : ["--headless=new"]), `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${join(dir, "profile")}`, "--no-first-run", "--no-default-browser-check", "--disable-features=AudioServiceSandbox", // the sandboxed audio service cannot read the WAV (silence, no error)
+  "--use-fake-ui-for-media-stream", ...(LIVE ? [] : ["--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${micWav}%noloop`]),
+  "--autoplay-policy=no-user-gesture-required", ...(LIVE ? [] : ["--mute-audio"]), ...(TAKE ? ["--window-size=1280,720"] : []), "about:blank",
 ], { stdio: "ignore" });
 const cleanup = () => { try { chrome.kill(); } catch {} try { server.kill(); } catch {} setTimeout(() => { try { rmSync(dir, { recursive: true, force: true }); } catch {} }, 500); };
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
@@ -117,19 +153,32 @@ const cdp = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((ok) => (cdp.onopen = ok));
 let seq = 0;
 const pending = new Map();
-cdp.onmessage = ({ data }) => { const m = JSON.parse(data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result || m); pending.delete(m.id); } };
+const frames = [];
+cdp.onmessage = ({ data }) => {
+  const m = JSON.parse(data);
+  if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result || m); pending.delete(m.id); }
+  if (m.method === "Page.screencastFrame") {
+    const file = join(TAKE, "frames", `f${String(frames.length).padStart(5, "0")}.png`);
+    writeFileSync(file, Buffer.from(m.params.data, "base64"));
+    frames.push({ file, t: m.params.metadata.timestamp }); // seconds since the epoch, Chrome's own clock
+    cdp.send(JSON.stringify({ id: ++seq, method: "Page.screencastFrameAck", params: { sessionId: m.params.sessionId } }));
+  }
+};
 const call = (method, params = {}) => new Promise((ok) => { const id = ++seq; pending.set(id, ok); cdp.send(JSON.stringify({ id, method, params })); });
 const evaluate = async (expression) => (await call("Runtime.evaluate", { expression, returnByValue: true, userGesture: true, awaitPromise: true })).result?.value;
 
 await call("Page.enable");
+if (TAKE) await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 2, mobile: false });
 await call("Page.addScriptToEvaluateOnNewDocument", { source: INSTRUMENT });
 await call("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
 for (let i = 0; i < 40 && !(await evaluate("Boolean(document.querySelector('#voice button'))")); i++) await sleep(250);
+if (TAKE) { await call("Page.startScreencast", { format: "png", maxWidth: 2560, maxHeight: 1440, everyNthFrame: 1 }); await sleep(400); }
+const takeStart = Date.now() / 1000;
 await evaluate("document.querySelector('#voice button').click()");
 
 const all = [];
 let micOpenAt = 0;
-const runFor = (turns[turns.length - 1].at + TAIL_S) * 1000;
+const runFor = LIVE ? MAX_S * 1000 : (turns[turns.length - 1].at + TAIL_S) * 1000;
 const started = Date.now();
 while (Date.now() - started < runFor + 3000) {
   await sleep(500);
@@ -140,6 +189,23 @@ while (Date.now() - started < runFor + 3000) {
     if (e.ev !== "mic.sent" || argv.includes("--verbose")) console.log(`${String(e.t).padStart(6)}ms  ${e.ev}${e.text ? "  " + String(e.text).slice(0, 200) : ""}`);
   }
   if (all.some((e) => e.ev === "ws.close" || e.ev === "session.ended")) break;
+}
+if (TAKE) {
+  await sleep(1200); // let the last line settle on screen
+  await call("Page.stopScreencast");
+  const replies = JSON.parse((await evaluate("JSON.stringify(window.__audio)")) || "[]");
+  for (const [i, r] of replies.entries()) { writeFileSync(join(TAKE, `officer-${String(i).padStart(2, "0")}.pcm`), Buffer.concat(r.chunks.map((c) => Buffer.from(c, "base64")))); delete r.chunks; r.file = `officer-${String(i).padStart(2, "0")}.pcm`; }
+  const micAt = all.find((e) => e.ev === "mic.open");
+  writeFileSync(join(TAKE, "take.json"), JSON.stringify({ start: takeStart, frames: frames.map((f) => ({ file: f.file, t: f.t })), replies, captain: turns.map((t, i) => ({ text: t.text, seconds: t.seconds, file: `captain-${i}.wav`, at: takeStart + (micAt ? micAt.t / 1000 : 0) + t.at })) }, null, 1));
+  if (LIVE) {
+    const mic = JSON.parse(await evaluate("JSON.stringify(window.__mic)"));
+    writeFileSync(join(TAKE, "captain.pcm"), Buffer.concat(mic.chunks.map((c) => Buffer.from(c, "base64"))));
+    const take = JSON.parse(readFileSync(join(TAKE, "take.json"), "utf8"));
+    take.captain = mic.at ? [{ text: "(live microphone)", file: "captain.pcm", pcm: true, at: mic.at }] : [];
+    take.heard = all.filter((e) => e.ev === "transcript.user").map((e) => ({ at: takeStart + e.t / 1000, text: e.text }));
+    writeFileSync(join(TAKE, "take.json"), JSON.stringify(take, null, 1));
+  } else turns.forEach((t, i) => writeFileSync(join(TAKE, `captain-${i}.wav`), readFileSync(join(dir, `u${i}.wav`))));
+  console.log(`take: ${frames.length} frames, ${replies.length} officer replies → ${TAKE}`);
 }
 const dockSays = await evaluate("JSON.stringify({ state: document.querySelector('#voice').dataset.state, mic: document.querySelector('#voice').dataset.mic, table: (document.querySelector('#voice section') || {}).innerText, marks: [...document.querySelectorAll('.ship')].map(s => s.dataset.app + ':' + (s.dataset.officer || '-')).join(' '), topic: document.documentElement.dataset.officer })");
 await evaluate("(() => { const b = document.querySelector('#voice button'); if (document.querySelector('#voice').dataset.state !== 'ended') b.click(); })()");
@@ -154,6 +220,7 @@ console.log(`audio sent: ${sent.map((e) => e.text.replace(" chunks, peak ", "/")
 let fail = false;
 const agentMode = Boolean(process.env.OFFICER_AGENT_ID); // the local host hands the island a stored agent: no tool calls, the officer is the model
 const ends = all.filter((e) => e.ev === "mic.loud.end");
+if (LIVE) console.log(`live take: ${all.filter((e) => e.ev === "transcript.user").length} captain turns heard`);
 turns.forEach((turn, i) => {
   const expected = micOpenAt + (turn.at + turn.seconds) * 1000;
   const end = ends.reduce((best, e) => (Math.abs(e.t - expected) < Math.abs((best?.t ?? 1e12) - expected) ? e : best), null);

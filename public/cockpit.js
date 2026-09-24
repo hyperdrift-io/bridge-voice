@@ -75,7 +75,7 @@
       clear() {
         table.hidden = true;
         delete document.documentElement.dataset.officer;
-        ships().forEach((card) => delete card.dataset.officer);
+        ships().forEach((card) => { delete card.dataset.officer; card.classList.remove("focused"); }); // the page's own ring too: a watch ends with nothing singled out
         openShip = "";
       },
     };

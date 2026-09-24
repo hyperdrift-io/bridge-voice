@@ -93,7 +93,7 @@
   let agenda = null;
   let watch = null; // the conversation (watch.js)
   let agentId = null; // set when the host binds us to the stored agent whose model is the officer itself (api/voice/llm.js)
-  let mirrorAsked = false, lastAgentLine = ""; // own-LLM mode: the island only mirrors the conversation so the cockpit can follow
+  let mirrorAsked = false, lastAgentLine = "", mirrored = ""; // mirrored: the line the endpoint is about to say, as the island worked it out too (takes caption from it) // own-LLM mode: the island only mirrors the conversation so the cockpit can follow
   let closing = false; // true once the captain said goodbye, "said" once the farewell was spoken; then the session ends
   let userSpeaking = false;
   let lastUserText = "";
@@ -234,6 +234,7 @@
     interruptsSince = agenda.generated || new Date().toISOString();
     const opening = watch.open();
     cockpit.show(opening);
+    mirrored = globalThis.officerForEar(opening.say);
     if (agentId) { // the officer is the model: hand it the cockpit's facts once, then let it open the watch itself
       send({ type: "conversation.message", role: "system", content: `FLEET_FACTS ${JSON.stringify({ ships: ships().map(shipFacts), fleet: TOOLS.read_commander({}) })}` });
       send({ type: "reply.create" });
@@ -329,7 +330,7 @@
     const turnOf = await watch.converse(words, { proposal: Boolean(proposal) }); // the order of the turn lives in watch.js
     switch (turnOf.kind) {
       case "proposal-yes": pendingProposal = proposal; return mirror ? {} : acceptProposal();
-      case "watch": cockpit.show(turnOf); if (turnOf.close) { closing = true; cockpit.clear(); } return turnOf; // the cockpit owns the screen now
+      case "watch": cockpit.show(turnOf); if (turnOf.close) { closing = true; cockpit.clear(); } if (mirror) mirrored = globalThis.officerForEar(turnOf.say); return turnOf; // the cockpit owns the screen now
       case "cockpit": {
         const r = turnOf.route;
         if (r.intent === "navigate") { const f = TOOLS.navigate({ target: r.target }); return { ...f, say: f.error || f.done }; }
@@ -341,7 +342,7 @@
         return { ...f, say };
       }
       default: // a real question: the brain's (in mirror mode the officer-as-LLM endpoint answers it; the cockpit only follows)
-        if (mirror) { if (turnOf.ship && findShip(turnOf.ship)) showFor({ ship: turnOf.ship }); mirrorAsked = true; return {}; }
+        if (mirror) { if (turnOf.ship && findShip(turnOf.ship)) showFor({ ship: turnOf.ship }); mirrorAsked = true; mirrored = ""; return {}; } // the brain's answer is not known here
         try { return await askOfficer(words); } catch (err) {
           return watch.hear(err.status === 429 ? { intent: "busy", seconds: err.body.retry_after } : { intent: "unclear" });
         }
@@ -446,5 +447,5 @@
       return { done: `Opened ${label(best)}.`, ...describeState() };
     },
   };
-  window.voiceTools = { ...TOOLS, route: (t) => { turn += 1; lastUserText = t; lastUserAt = Date.now(); return captainSaid({ text: t }); }, loadAgenda }; // console: voiceTools.route("why?")
+  window.voiceTools = { ...TOOLS, mirrored: () => mirrored, route: (t) => { turn += 1; lastUserText = t; lastUserAt = Date.now(); return captainSaid({ text: t }); }, loadAgenda }; // console: voiceTools.route("why?")
 })();
