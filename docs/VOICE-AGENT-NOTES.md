@@ -198,8 +198,10 @@ stored agent whose `llm` is that host's `/api/voice/llm`. The account accepts a 
   once. **End of speech → answer audio: 1.37–1.93 s**, and the first sound *is* the answer (no filler, no tool call).
 - **Barge-in survived.** "Yes" spoken over the last word of the previous line trimmed that line's transcript and was
   still answered correctly, the case that made the managed model re-read old lines.
-- **Injected `conversation.message` user turns are not handed to a custom model** (a typed "why" got the opening
-  again), so typed mode (`#text`) stays on the managed session; the agent binds only when the mic is in use.
+- **Injected `conversation.message` user turns are not handed to a custom model.** Proven by the host's logs: after a
+  typed "why" the endpoint received `system:1344 assistant:153` and no user message (the platform wraps our short
+  system prompt in about 1.3 k characters of its own). So typed mode (`#text`) stays on the managed session; the agent
+  binds only when the mic is in use.
 - The socket-only probe: 156 ms from the typed turn to first audio.
 
 Latency budget on this path is the platform's STT and TTS plus one HTTPS round trip to Cloud Run (~50 ms from
