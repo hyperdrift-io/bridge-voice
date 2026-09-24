@@ -275,7 +275,6 @@
       // The brain may recognise an order said in words the router does not know ("let's leave that one for now"): it comes back as an intent.
       if (body.intent && watch) { const heard = await watch.hear({ intent: body.intent, decision: body.decision, text: question }); if (heard) { showFor(heard.ui); return heard; } }
       pendingProposal = body.proposal || null;
-      if (card) showFor({ ship });
       return { say: `${body.say}${pendingProposal ? ` ${pendingProposal.ask || "Shall I?"}` : ""}`, skill: body.skill, proposal: pendingProposal };
     } finally {
       clearInterval(ticker);
@@ -342,7 +341,10 @@
         return { ...f, say };
       }
       default: // a real question: the brain's (in mirror mode the officer-as-LLM endpoint answers it; the cockpit only follows)
-        if (mirror) { if (turnOf.ship && findShip(turnOf.ship)) showFor({ ship: turnOf.ship }); mirrorAsked = true; mirrored = ""; return {}; } // the brain's answer is not known here
+        // A question about a ship marks that ship; its panel opens only when the captain asks to see it (founder, 2026-09-18).
+        // The panel opening here once buried the whole screen, dock included, at the question beat of a take (2026-09-24).
+        if (turnOf.ship && findShip(turnOf.ship)) cockpit.show({ view: { kind: "question", label: turnOf.ship, headline: words, lines: [], options: [], ships: [turnOf.ship] } });
+        if (mirror) { mirrorAsked = true; mirrored = ""; return {}; } // the brain's answer is not known here
         try { return await askOfficer(words); } catch (err) {
           return watch.hear(err.status === 429 ? { intent: "busy", seconds: err.body.retry_after } : { intent: "unclear" });
         }
