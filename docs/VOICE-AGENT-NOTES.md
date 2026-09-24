@@ -206,3 +206,18 @@ stored agent whose `llm` is that host's `/api/voice/llm`. The account accepts a 
 
 Latency budget on this path is the platform's STT and TTS plus one HTTPS round trip to Cloud Run (~50 ms from
 europe-west1); the endpoint itself answers in under 10 ms.
+
+## The video, recorded from the real page (2026-09-24)
+
+The founder asked for the video and the article. The demo is one real watch, recorded by the spoken gate itself
+(`mic-test.mjs --take`): Chrome's 2x screencast frames at their own timestamps, the officer's audio per reply as the
+platform streamed it, the captain's audio (scheduled WAVs in a rehearsal, the page's own outgoing stream in a `--live`
+take), and captions rendered in the page. `assemble-take.mjs` muxes it with ffmpeg; verified against the event log:
+quiet at −91 dB, both voices where the log says.
+
+- **Own-LLM replies stream no `transcript.agent.delta`**; the final `transcript.agent` lands as the audio ends. Live
+  captions therefore come from the island's mirror of the line (it computes the same line the endpoint says), with the
+  final transcript as the fallback for the brain's answers.
+- **Chrome's noise suppression strips a synthetic noise floor**, so a scheduled take still reports "sends pure silence"
+  in the dock; the take hides the mic line. A real microphone never has this problem.
+- Five takes, 1.2–1.9 s from end of speech to the answer on every scripted turn; the free question 2–3 s.

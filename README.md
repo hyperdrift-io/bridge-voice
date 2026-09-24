@@ -79,6 +79,12 @@ gcloud run deploy bridge-voice --source . --clear-base-image --project hyperdrif
 `.gcloudignore` keeps `.env` out of the upload; its `public/index.html` line keeps the snapshot out of API-only deploys. Then run the
 spoken-path gate against the public URL from a browser that has never seen the page.
 
+## The demo video
+
+One real watch, recorded by the spoken gate: `node scripts/mic-test.mjs --take <dir> …` (a scheduled rehearsal) or
+`--live --take <dir>` (the founder, real microphone), then `node scripts/assemble-take.mjs <dir> out.mp4` and the cards in
+`docs/video/`. How to record it, the beats and the two cuts: `docs/video/TAKE.md`.
+
 ## Layout
 
 ```
