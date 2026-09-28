@@ -40,7 +40,8 @@ function pcmOf(file) {
   }
   throw new Error(`${file}: no data chunk`);
 }
-const total = LIVE ? 2 : Math.ceil((turns[turns.length - 1].at + TAIL_S + 10) * RATE) * 2;
+const REAL = LIVE && !turns.length; // a live take with a schedule is a rehearsal of the live path: same recording, the test microphone
+const total = !turns.length ? 2 : Math.ceil((turns[turns.length - 1].at + TAIL_S + 10) * RATE) * 2;
 const pcm = Buffer.alloc(total);
 // A real microphone in a quiet room is never digital silence; without a floor the dock rightly reports "sends pure silence".
 for (let i = 0; i < total; i += 2) pcm.writeInt16LE(Math.round((Math.random() - 0.5) * 40), i);
@@ -82,7 +83,7 @@ const INSTRUMENT = `(() => {
   if (TAKE) document.addEventListener("DOMContentLoaded", () => { const st = document.createElement("style"); st.textContent = "#voice > p,#voice > small,#voice form{display:none}#take-caption{position:fixed;left:3.5rem;right:26rem;bottom:2.4rem;z-index:60;display:grid;gap:.25rem;pointer-events:none;font:inherit}#take-caption span{font-size:.85rem;letter-spacing:.06em;text-transform:uppercase;opacity:.7}#take-caption b{font-size:2rem;line-height:1.25;font-weight:600;color:#e6e9ef;text-shadow:0 2px 12px rgb(0 0 0/.7)}#take-caption[data-who=officer] span{color:#e8b04b}#take-caption[data-who=captain] span{color:#4bd08a}#take-caption[hidden]{display:none}"; document.head.append(st); });
   const merge = (a, b) => { for (const [k, v] of Object.entries(b || {})) { if (v === null) delete a[k]; else if (v && typeof v === "object" && !Array.isArray(v)) a[k] = merge(a[k] || {}, v); else a[k] = v; } return a; };
   const t0 = performance.now(), log = (window.__log = []);
-  const push = (o) => log.push({ t: Math.round(performance.now() - t0), ...o });
+  const push = (o) => log.push({ t: Math.round(performance.now() - t0), abs: Date.now() / 1000, ...o });
   const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
   navigator.mediaDevices.getUserMedia = async (c) => {
     try { const s = await gum(c); const tr = s.getAudioTracks()[0]; push({ ev: "mic.open", text: tr.label + " " + JSON.stringify(tr.getSettings()) }); return s; }
@@ -138,9 +139,9 @@ const INSTRUMENT = `(() => {
 const server = spawn(process.execPath, ["scripts/dev.mjs"], { env: { ...process.env, PORT: String(PORT), CREW_API: "0" }, stdio: ["ignore", "pipe", "inherit"] });
 await new Promise((ok) => server.stdout.once("data", ok));
 const chrome = spawn(CHROME, [
-  ...(HEADED || LIVE ? [] : ["--headless=new"]), `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${join(dir, "profile")}`, "--no-first-run", "--no-default-browser-check", "--disable-features=AudioServiceSandbox", // the sandboxed audio service cannot read the WAV (silence, no error)
-  "--use-fake-ui-for-media-stream", ...(LIVE ? [] : ["--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${micWav}%noloop`]),
-  "--autoplay-policy=no-user-gesture-required", ...(LIVE ? [] : ["--mute-audio"]), ...(TAKE ? ["--window-size=1280,720"] : []), "about:blank",
+  ...(HEADED || REAL ? [] : ["--headless=new"]), `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${join(dir, "profile")}`, "--no-first-run", "--no-default-browser-check", "--disable-features=AudioServiceSandbox", // the sandboxed audio service cannot read the WAV (silence, no error)
+  "--use-fake-ui-for-media-stream", ...(REAL ? [] : ["--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${micWav}%noloop`]),
+  "--autoplay-policy=no-user-gesture-required", ...(REAL ? [] : ["--mute-audio"]), ...(TAKE ? ["--window-size=1280,720"] : []), "about:blank",
 ], { stdio: "ignore" });
 const cleanup = () => { try { chrome.kill(); } catch {} try { server.kill(); } catch {} setTimeout(() => { try { rmSync(dir, { recursive: true, force: true }); } catch {} }, 500); };
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
@@ -204,7 +205,11 @@ if (TAKE) {
     writeFileSync(join(TAKE, "captain.pcm"), Buffer.concat(mic.chunks.map((c) => Buffer.from(c, "base64"))));
     const take = JSON.parse(readFileSync(join(TAKE, "take.json"), "utf8"));
     take.captain = mic.at ? [{ text: "(live microphone)", file: "captain.pcm", pcm: true, at: mic.at }] : [];
-    take.heard = all.filter((e) => e.ev === "transcript.user").map((e) => ({ at: takeStart + e.t / 1000, text: e.text }));
+    take.heard = all.filter((e) => e.ev === "transcript.user").map((e) => ({ at: e.abs, text: e.text }));
+    // When the captain actually spoke, by the service's own detection (it lags the first syllable by about half a second).
+    // The browser's auto-gain lifts the room between utterances; the assembler keeps the mic only inside these windows.
+    const starts = all.filter((e) => e.ev === "input.speech.started");
+    take.segments = starts.map((a) => { const b = all.find((e) => e.abs >= a.abs && (e.ev === "input.speech.stopped" || e.ev === "transcript.user")); return { from: a.abs - 0.9, to: (b ? b.abs : a.abs + 2) + 0.15 }; });
     writeFileSync(join(TAKE, "take.json"), JSON.stringify(take, null, 1));
   } else turns.forEach((t, i) => writeFileSync(join(TAKE, `captain-${i}.wav`), readFileSync(join(dir, `u${i}.wav`))));
   console.log(`take: ${frames.length} frames, ${replies.length} officer replies → ${TAKE}`);

@@ -32,7 +32,11 @@ const officers = take.replies.length;
 take.captain.forEach((c) => { inputs.push(...(c.pcm ? ["-f", "s16le", "-ar", "24000", "-ac", "1"] : []), "-i", join(dir, c.file)); delays.push(Math.round((c.at - t0) * 1000)); });
 const n = inputs.filter((a) => a === "-i").length;
 // The officer's TTS already peaks near full scale (measured −3.4 dBFS raw); the captain's track sits a few dB lower.
-const filter = [...Array(n)].map((_, i) => `[${i + 1}:a]aresample=48000,aformat=channel_layouts=mono,volume=${i < officers ? 1 : 1.3},adelay=${delays[i]}|${delays[i]}[a${i}]`).join(";") +
+// A live captain track is the microphone as the service heard it: quieter than the officer, and with the room lifted by
+// auto-gain between utterances. It is levelled, limited, and kept only where the captain spoke (take.segments).
+const spoke = (take.segments || []).map((g) => `between(t,${(g.from - t0).toFixed(2)},${(g.to - t0).toFixed(2)})`).join("+");
+const captainChain = (c) => (c.pcm ? `volume=2,alimiter=limit=0.7:level=false${spoke ? `,volume=0:enable='not(${spoke})'` : ""}` : "volume=1.3");
+const filter = [...Array(n)].map((_, i) => `[${i + 1}:a]aresample=48000,aformat=channel_layouts=mono,${i < officers ? "volume=1" : "volume=1"},adelay=${delays[i]}|${delays[i]}${i < officers ? "" : "," + captainChain(take.captain[i - officers])}[a${i}]`).join(";") +
   `;${[...Array(n)].map((_, i) => `[a${i}]`).join("")}amix=inputs=${n}:normalize=0:duration=longest,apad,atrim=0:${(end - t0).toFixed(3)}[aout]`;
 const video = ["-f", "concat", "-safe", "0", "-i", join(dir, "frames.txt")];
 execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...video, ...inputs, "-filter_complex", `[0:v]setpts=PTS-STARTPTS+${lead.toFixed(3)}/TB,scale=2560:1440:force_original_aspect_ratio=decrease,pad=2560:1440:(ow-iw)/2:(oh-ih)/2:color=#0b0f18,fps=30,format=yuv420p[v];${filter}`,
