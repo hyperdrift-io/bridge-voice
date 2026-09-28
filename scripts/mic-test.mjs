@@ -21,6 +21,7 @@ const HEADED = argv.includes("--headed");
 const SESSION_PATCH = JSON.parse(flag("--session", "null"));
 const LIVE = argv.includes("--live"); // the founder's own take: a headed Chrome, the real microphone, no schedule; the rig records the page, the officer and the mic
 const MAX_S = Number(flag("--max", 240)); // a live take ends when the session ends (a goodbye), or here
+const VOICES = flag("--voices", ""); // pre-rendered captain lines (u0.wav, u1.wav … 48 kHz mono PCM16) instead of macOS say
 const TAKE = flag("--take", ""); // record a take: 2x screencast frames, the officer's audio per reply and live captions → <dir>; assemble with scripts/assemble-take.mjs
 if (TAKE) mkdirSync(join(TAKE, "frames"), { recursive: true }); // test a session setting without touching the island: merged into the island's own session.update
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -45,7 +46,8 @@ const pcm = Buffer.alloc(total);
 for (let i = 0; i < total; i += 2) pcm.writeInt16LE(Math.round((Math.random() - 0.5) * 40), i);
 turns.forEach((t, i) => {
   const wav = join(dir, `u${i}.wav`);
-  execFileSync("say", ["-o", wav, `--data-format=LEI16@${RATE}`, t.text]);
+  if (VOICES) writeFileSync(wav, readFileSync(join(VOICES, `u${i}.wav`)));
+  else execFileSync("say", ["-o", wav, `--data-format=LEI16@${RATE}`, t.text]);
   const speech = pcmOf(wav);
   speech.copy(pcm, Math.round(t.at * RATE) * 2);
   t.seconds = speech.length / 2 / RATE;

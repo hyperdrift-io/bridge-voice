@@ -6,3 +6,5 @@ dist/
 .DS_Store
 # Frozen Bridge snapshot — the founder reviews the scrub (scripts/build-demo.mjs report) before this is committed and published.
 public/index.html
+# the printed deck is rebuilt by scripts/slides.mjs; the founder's final PDF goes to the submission, not to git
+docs/slides/*.pdf
