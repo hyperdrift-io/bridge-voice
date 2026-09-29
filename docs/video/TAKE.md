@@ -30,22 +30,33 @@ Use headphones or a quiet room: the browser cancels its own echo, but a loud spe
 line short. Wait for the officer to finish before answering; a word spoken over its last syllable is the one case the
 platform can drop.
 
-## The beats (about 1:45)
+## The reactive take (2026-09-29)
+
+`scripts/take.mjs` records the same things with a captain who listens: each line in `docs/video/script.json` goes out
+0.7 s after the officer has really finished (its audio played, any order carried out), or cuts in a set number of
+seconds into the officer's line (`cutIn`). The captain's lines are WAV files (`u0.wav`, `u1.wav`… in script order),
+handed to the page as its microphone. On screen, for the video only: what the captain was heard to say and by which
+model, the officer's line as it is spoken, and the measured time from the end of the captain's voice to the first
+sound of the answer.
+
+```bash
+curl -X POST https://helm-294160018950.europe-west1.run.app/control/cargo/maintenance   # the sandbox ship, offline for the opening
+node scripts/take.mjs <dir> --url http://127.0.0.1:8787 --voices <dir with u0.wav…> --script docs/video/script.json
+node scripts/assemble-take.mjs <dir> master.mp4 --tail 1.2
+```
+
+## The beats (1:12, take 10)
 
 | When | Captain says | What happens on screen |
 |---|---|---|
-| 0:00 | (nothing: press *Open the watch*) | The officer opens: three things on the agenda. All four ships come forward. |
-| ~0:18 | "the reads" | The four ships overdue a read, three choices. |
-| ~0:32 | "intel" | Intel alone is ringed; the rest recede. Its item and two choices on the table. |
-| ~0:46 | "why" | The evidence, one line. |
-| ~1:00 | "run it" | The decision is recorded; the three ships left are offered. |
-| ~1:14 | "what is holding intel back?" | A real question: the fleet's brain answers with one proposal. Intel stays marked. |
-| ~1:34 | "that's all for today" | "Watch closed. One decision logged. Fair winds, Captain." The session ends itself. |
-
-Say the words your own way; the router hears "the reads", "the fixes", "you choose", "why", "go on", "run it", "park
-it", "hand them all over", "menu", "say that again", "thanks", and a goodbye. Anything that sounds like a question goes
-to the brain. Keep the whole watch under two minutes: the contest cut adds a four-second credits card and must stay
-comfortably inside the five-minute cap; two minutes is the bar the contest skill sets.
+| 0:00 | (nothing: press *Open the watch*) | Cargo takes its berth, red. The officer opens with what is on the agenda. |
+| 0:06 | "Cargo." (over the officer) | The officer stops mid-sentence. Cargo comes forward; the choices appear. |
+| 0:14 | "Bring it back." | Helm's steps land one by one; Cargo turns amber, then green. |
+| 0:19 | (nothing) | Unprompted: "Captain, Cargo answers again. Checked twice." |
+| 0:30 | "Yes." | The next topic on the agenda; its ship comes forward. |
+| 0:43 | "Why?" | The evidence, one line. |
+| 0:54 | "Hand it over." | The decision is recorded; the next topic is offered. |
+| 1:06 | "That's all for today." | "Watch closed. Two decisions logged. Fair winds, Captain." The session ends itself. |
 
 ## Two cuts from one take
 
