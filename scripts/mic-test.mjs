@@ -21,6 +21,7 @@ const HEADED = argv.includes("--headed");
 const SESSION_PATCH = JSON.parse(flag("--session", "null"));
 const LIVE = argv.includes("--live"); // the founder's own take: a headed Chrome, the real microphone, no schedule; the rig records the page, the officer and the mic
 const MAX_S = Number(flag("--max", 240)); // a live take ends when the session ends (a goodbye), or here
+const URL_BASE = flag("--url", ""); // run against a deployed page (the judges' URL) instead of a local host
 const VOICES = flag("--voices", ""); // pre-rendered captain lines (u0.wav, u1.wav … 48 kHz mono PCM16) instead of macOS say
 const TAKE = flag("--take", ""); // record a take: 2x screencast frames, the officer's audio per reply and live captions → <dir>; assemble with scripts/assemble-take.mjs
 if (TAKE) mkdirSync(join(TAKE, "frames"), { recursive: true }); // test a session setting without touching the island: merged into the island's own session.update
@@ -136,8 +137,8 @@ const INSTRUMENT = `(() => {
 })();`;
 
 // ── Demo host + Chrome + CDP ─────────────────────────────────────────────────────────────────────────────────
-const server = spawn(process.execPath, ["scripts/dev.mjs"], { env: { ...process.env, PORT: String(PORT), CREW_API: "0" }, stdio: ["ignore", "pipe", "inherit"] });
-await new Promise((ok) => server.stdout.once("data", ok));
+const server = URL_BASE ? { kill() {} } : spawn(process.execPath, ["scripts/dev.mjs"], { env: { ...process.env, PORT: String(PORT), CREW_API: "0" }, stdio: ["ignore", "pipe", "inherit"] });
+if (!URL_BASE) await new Promise((ok) => server.stdout.once("data", ok));
 const chrome = spawn(CHROME, [
   ...(HEADED || REAL ? [] : ["--headless=new"]), `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${join(dir, "profile")}`, "--no-first-run", "--no-default-browser-check", "--disable-features=AudioServiceSandbox", // the sandboxed audio service cannot read the WAV (silence, no error)
   "--use-fake-ui-for-media-stream", ...(REAL ? [] : ["--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${micWav}%noloop`]),
@@ -173,7 +174,7 @@ const evaluate = async (expression) => (await call("Runtime.evaluate", { express
 await call("Page.enable");
 if (TAKE) await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 2, mobile: false });
 await call("Page.addScriptToEvaluateOnNewDocument", { source: INSTRUMENT });
-await call("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+await call("Page.navigate", { url: URL_BASE ? `${URL_BASE.replace(/\/$/, "")}/` : `http://127.0.0.1:${PORT}/` });
 for (let i = 0; i < 40 && !(await evaluate("Boolean(document.querySelector('#voice button'))")); i++) await sleep(250);
 if (TAKE) { await call("Page.startScreencast", { format: "png", maxWidth: 2560, maxHeight: 1440, everyNthFrame: 1 }); await sleep(400); }
 const takeStart = Date.now() / 1000;
@@ -225,7 +226,7 @@ const sent = all.filter((e) => e.ev === "mic.sent");
 console.log(`mic: ${all.find((e) => e.ev === "mic.open")?.text || all.find((e) => e.ev === "mic.error")?.text || "never opened"}`);
 console.log(`audio sent: ${sent.map((e) => e.text.replace(" chunks, peak ", "/").replace(", ahead ", " +")).join("  ")}  (chunks/peak per 5 s, then audio sent ahead of the wall clock)`);
 let fail = false;
-const agentMode = Boolean(process.env.OFFICER_AGENT_ID); // the local host hands the island a stored agent: no tool calls, the officer is the model
+const agentMode = Boolean(process.env.OFFICER_AGENT_ID) || Boolean(URL_BASE); // the local host hands the island a stored agent: no tool calls, the officer is the model
 const ends = all.filter((e) => e.ev === "mic.loud.end");
 if (LIVE) console.log(`live take: ${all.filter((e) => e.ev === "transcript.user").length} captain turns heard`);
 turns.forEach((turn, i) => {

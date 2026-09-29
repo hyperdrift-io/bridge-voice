@@ -8,7 +8,7 @@
 set -euo pipefail
 out="${1:?usage: public-export.sh <out-dir>}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
-internal="docs/RESUME.md docs/ONE-NIGHT-PLAN.md docs/BUILD-PLAN.md"
+internal="docs/RESUME.md docs/ONE-NIGHT-PLAN.md docs/BUILD-PLAN.md docs/slides/index.html"  # the slide scaffold carries the founder's working notes
 rm -rf "$out" && git clone -q --no-local "$here" "$out"
 FILTER_BRANCH_SQUELCH_WARNING=1 git -C "$out" filter-branch -f --index-filter "git rm -q --cached --ignore-unmatch $internal" --prune-empty -- --all >/dev/null 2>&1
 git -C "$out" for-each-ref --format='%(refname)' refs/original | while read -r ref; do git -C "$out" update-ref -d "$ref"; done
@@ -28,7 +28,7 @@ git -C "$out" -c user.email=yann@hyperdrift.io -c user.name="Yann VR" commit -q 
 git -C "$out" reflog expire --expire=now --all && git -C "$out" gc -q --prune=now
 echo "commits:        $(git -C "$out" rev-list --count HEAD)  ($(git -C "$out" log --reverse --format=%ad --date=short | head -1) → $(git -C "$out" log -1 --format=%ad --date=short))"
 echo "authors:        $(git -C "$out" log --format='%ae' | sort -u | tr '\n' ' ')"
-echo "internal docs:  $(git -C "$out" log --all --name-only --format= | grep -cE 'docs/(RESUME|ONE-NIGHT-PLAN|BUILD-PLAN)\.md' || true) in history"
+echo "internal docs:  $(git -C "$out" log --all --name-only --format= | grep -cE 'docs/(RESUME|ONE-NIGHT-PLAN|BUILD-PLAN)\.md|docs/slides/index\.html' || true) in history"
 echo "personal email: $(git -C "$out" log --all -p | grep -c '@gmail\.com' || true) occurrences"
 echo "dangling refs:  $(git -C "$out" grep -cE 'RESUME\.md|ONE-NIGHT-PLAN|BUILD-PLAN' -- . | wc -l | tr -d ' ') files"
 echo "→ $out"

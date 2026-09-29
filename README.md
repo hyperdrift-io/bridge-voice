@@ -7,7 +7,8 @@ answers a real question with an opinion, proposes the next step, and moves the c
 whatever is being discussed. You do not need the screen. It follows you.
 
 Built for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon)
-(lablab.ai, September 1–30 2026). Concept of record: [docs/FIRST-OFFICER.md](docs/FIRST-OFFICER.md).
+(lablab.ai, September 1–30 2026). **Try it:** https://bridge-voice-294160018950.europe-west1.run.app.
+Concept of record: [docs/FIRST-OFFICER.md](docs/FIRST-OFFICER.md).
 
 ## What AssemblyAI does here
 
@@ -65,19 +66,16 @@ OFFICER_AGENT_ID=agent_… node scripts/mic-test.mjs "why@16" "yes@30"          
 Typed turns (`#text`) are injected messages, which the platform does not hand a custom model, so typing stays on the
 managed session. Without `OFFICER_AGENT_ID` the island configures the session itself and uses the managed model.
 
-## Deploy for judges
+## The judges' page
 
-Only after the founder has read the scrub report and approved the snapshot (`AGENTS.md`). One container serves the
-page, the officer's files and `/api/voice/*`; sessions stay capped at 300 s and the key stays server-side.
+Live at **https://bridge-voice-294160018950.europe-west1.run.app** (Chrome, allow the microphone, press *Open the watch*).
+One Cloud Run service serves the frozen snapshot, the officer's files and `/api/voice/*`; sessions are capped at 300 s and
+the key stays server-side. Nothing on it writes to a production ship.
 
 ```bash
-# remove the public/index.html line from .gcloudignore first, then:
-gcloud run deploy bridge-voice --source . --clear-base-image --project hyperdrift-distribution --region europe-west1 \
-  --allow-unauthenticated --max-instances 2 --set-env-vars "ASSEMBLYAI_API_KEY=…,OFFICER_LLM_KEY=…,OFFICER_AGENT_ID=…,CREW_API=0"
+scripts/deploy-page.sh                      # stages exactly what the container needs and deploys it
+node scripts/mic-test.mjs --url https://bridge-voice-294160018950.europe-west1.run.app "the reads@16" "intel@30"   # the spoken gate, against the public page
 ```
-
-`.gcloudignore` keeps `.env` out of the upload; its `public/index.html` line keeps the snapshot out of API-only deploys. Then run the
-spoken-path gate against the public URL from a browser that has never seen the page.
 
 ## The demo video
 
@@ -102,6 +100,7 @@ api/voice/ask.js         a question → skill → opinion + one proposal (gatewa
 api/voice/interrupts.js  Helm's sandbox events, spoken unprompted
 api/voice/control.js     the judges' write path: Helm's sandbox ship only, rate-limited
 api/voice/llm.js         the officer as the model: OpenAI-compatible endpoint for AssemblyAI's own-LLM agents (tests: scripts/llm.test.mjs)
+scripts/deploy-page.sh   the judges' page to Cloud Run, from a staged copy
 scripts/build-demo.mjs   snapshot → scrub → expose page functions → attach the officer's files
 scripts/mic-test.mjs     spoken-path gate: real Chrome, fake capture device, per-turn timing
 scripts/dev.mjs          zero-dependency local server: static + every api/voice/<name>.js
