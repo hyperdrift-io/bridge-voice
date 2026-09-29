@@ -72,6 +72,31 @@
         choices.hidden = !(view.options || []).length;
         move(view);
       },
+      // The sandbox ship takes its berth in the fleet with the state it answers in right now (probed from outside, never
+      // assumed). It is the one ship here that takes an order for real, so its card is drawn live, not frozen in the snapshot.
+      berth({ ship, http, ms, working = false }) {
+        let card = findShip(ship);
+        if (!card) {
+          const fleet = document.getElementById("leaderboard") || (ships()[0] && ships()[0].parentElement);
+          if (!fleet) return;
+          card = document.createElement("article");
+          card.className = "ship"; card.dataset.app = ship;
+          card.innerHTML = '<button type="button" class="ship-line" aria-haspopup="dialog"><span class="rank">·</span><span class="ship-glyph" aria-hidden="true"></span><span class="ship-name"></span><span class="ship-move"></span><span class="stage">Sandbox</span></button>'
+            + '<dialog class="ship-modal"><div class="ship-modal-head"><span class="ship-glyph" aria-hidden="true"></span><h2 class="ship-name"></h2><span class="stage">Sandbox</span><button type="button" class="ship-modal-close" aria-label="Close">✕</button></div>'
+            + '<div class="ship-body"><section class="traffic-panel"><p></p></section><p class="next-step">The one ship on this Bridge that takes an order for real: say “take Cargo offline”, then “bring it online”. Helm carries the order out; the officer checks the ship from outside before reporting.</p></div></dialog>';
+          card.querySelectorAll(".ship-name").forEach((el) => { el.textContent = ship; });
+          const modal = card.querySelector("dialog");
+          modal.setAttribute("aria-label", `${ship} detail`);
+          card.querySelector(".ship-line").addEventListener("click", () => bridge.openShip(card));
+          card.querySelector(".ship-modal-close").addEventListener("click", () => modal.close());
+          fleet.prepend(card);
+        }
+        const up = http === 200;
+        card.dataset.sandbox = working ? "working" : up ? "online" : "offline";
+        card.querySelectorAll(".ship-glyph").forEach((el) => { el.className = `ship-glyph ${working ? "amber" : up ? "green" : "red"}`; });
+        const line = `Sandbox ship · ${working ? "Helm is working on it" : up ? `answering in ${ms} ms` : `not answering (${http})`}`;
+        card.querySelectorAll(".ship-move, .traffic-panel > p").forEach((el) => { el.textContent = line; });
+      },
       clear() {
         table.hidden = true;
         delete document.documentElement.dataset.officer;

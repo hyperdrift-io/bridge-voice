@@ -13,10 +13,10 @@
   // What the captain can do with an item, in words they would say. The first verb of each pair is what router.js hears.
   const VERBS = {
     act: { offer: "go for it", done: "approve" }, approve: { offer: "hand it to an agent", done: "approve" }, run: { offer: "run it", done: "approve" },
-    acknowledge: { offer: "note it", done: "acknowledge" }, reject: { offer: "drop it", done: "reject" }, defer: { offer: "park it", done: "defer" }, park: { offer: "park it", done: "defer" },
+    restore: { offer: "bring it online", done: "approve" }, acknowledge: { offer: "note it", done: "acknowledge" }, reject: { offer: "drop it", done: "reject" }, defer: { offer: "park it", done: "defer" }, park: { offer: "park it", done: "defer" },
   };
-  const GROUPED = { heal: (n) => `${count(n)} small fixes an agent can take`, read: (n) => `${count(n)} ships overdue a read`, alert: (n) => `${count(n)} alerts` };
-  const KIND_WORDS = { contest: "contest contests hackathon hackathons deadline challenge", heal: "fix fixes finding findings heal agent repairs", read: "read reads ship ships commander overdue", alert: "alert alerts notification notifications" };
+  const GROUPED = { heal: (n) => `${count(n)} small fixes an agent can take`, read: (n, its) => (its.every((i) => i.fresh) ? `${count(n)} fresh reads` : `${count(n)} ships overdue a read`), alert: (n) => `${count(n)} alerts` };
+  const KIND_WORDS = { signal: "signal signals", incident: "incident outage down offline stopped answering", contest: "contest contests hackathon hackathons deadline challenge", heal: "fix fixes finding findings heal agent repairs", read: "read reads ship ships commander overdue", alert: "alert alerts notification notifications" };
   const ORDINALS = { first: 0, "1st": 0, one: 0, second: 1, "2nd": 1, two: 1, third: 2, "3rd": 2, three: 2, fourth: 3, last: -1 };
 
   function create(agenda, { decide, hour = new Date().getHours() } = {}) {
@@ -38,7 +38,7 @@
         else out.push({ kind: it.kind, group: Boolean(group), items: [it] });
       }
       for (const t of out) {
-        t.label = t.group ? GROUPED[t.kind](t.kind === "heal" ? t.items.reduce((n, i) => n + (i.keys || [i]).length, 0) : t.items.length) : label(t.items[0]);
+        t.label = t.group ? GROUPED[t.kind](t.kind === "heal" ? t.items.reduce((n, i) => n + (i.keys || [i]).length, 0) : t.items.length, t.items) : label(t.items[0]);
         t.words = norm(`${t.label} ${KIND_WORDS[t.kind] || ""} ${t.items.map((i) => `${label(i)} ${i.ship || ""}`).join(" ")}`).split(" ");
       }
       return out;
@@ -58,22 +58,58 @@
     const offers = (it, withWhy = true) => choices([...it.options.map((o) => (VERBS[o] || { offer: o }).offer), ...(withWhy && it.why.length ? ["hear why"] : [])]);
 
     // ── Lines ────────────────────────────────────────────────────────────
-    function menu(opening) {
-      focus = null; pending = null; walking = false;
+    function menuLine(opening) {
       const ts = topics();
       const hello = opening ? `${hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 18 ? "Afternoon" : "Evening"}, Captain. ` : "";
-      if (!ts.length) return say(`${hello}${opening ? "The agenda is clear" : "That is everything decided"}. Ask me about a ship, or shall I close the watch?`);
-      if (ts.length === 1) return say(`${hello}${opening ? "One thing today" : "One thing left"}: ${ts[0].label}. Shall we take it?`);
+      if (!ts.length) return `${hello}${opening ? "The agenda is clear" : "That is everything decided"}. Ask me about a ship, or shall I close the watch?`;
+      if (ts.length === 1) return `${hello}${opening ? "One thing today" : "One thing left"}: ${ts[0].label}. Shall we take it?`;
       const named = ts.slice(0, 3).map((t) => t.label);
-      const more = ts.length > 3 ? `, and ${count(ts.length - 3)} more` : "";
-      return say(`${hello}${cap(count(ts.length))} things ${opening ? "today" : "left"}: ${list(named)}${more}. Which one first?`);
+      const all = ts.length > 3 ? `${named.join(", ")}, and ${count(ts.length - 3)} more` : list(named);
+      return `${hello}${cap(count(ts.length))} ${opening ? "things today" : "left"}: ${all}. Which one first?`;
+    }
+    function menu(opening) {
+      focus = null; pending = null; walking = false;
+      return say(menuLine(opening));
+    }
+    // After a decision the officer leads: with more than two topics left it names the next one and asks, instead of
+    // reading the whole list again (the founder, 2026-09-29: lines too long, blanks too many). "Menu" still lists them all.
+    const restLine = () => { const ts = topics(); return ts.length > 2 ? `${cap(count(ts.length))} left. Next: ${ts[0].label}. Shall we?` : menuLine(); };
+    function rest() {
+      focus = null; walking = false;
+      const ts = topics();
+      pending = ts.length > 2 ? { pick: ts[0] } : null;
+      return say(restLine());
+    }
+    // An order on a ship itself (the sandbox ship here; the production ships take theirs from the live Bridge). The officer
+    // acknowledges in one breath and hands the order on; whoever carries it out (the island) reports back through report().
+    const operable = agenda.operable || [];
+    function order(r) {
+      const on = focus && focus.item && focus.item.order ? focus.item : items.find((i) => i.order && (!r.ship || i.ship === r.ship));
+      const ship = r.ship || (on && on.ship) || (operable.length === 1 ? operable[0] : "");
+      const mode = r.mode || (on && on.order.mode) || "online";
+      if (!operable.includes(ship)) return say(`${ship ? cap(ship) : "That ship"} takes its orders from the live Bridge. From here I can switch ${list(operable.map(cap)) || "nothing"}. ${focus ? cap(onTable(false)) : menuLine()}`);
+      if (on && on.order.mode === mode) { items = items.filter((i) => i !== on); decided += 1; }
+      focus = null; pending = null; walking = false;
+      const line = mode === "online" ? `On it. Helm is bringing ${cap(ship)} back online.` : `${cap(ship)} is the sandbox ship, so that is safe. Helm is taking it offline.`;
+      last = line;
+      return { say: line, hold: true, order: { ship, mode }, ui: null, view: { kind: "order", label: cap(ship), headline: mode === "online" ? "Helm is bringing it back online" : "Helm is taking it offline", lines: [], options: [], ships: [ship] } };
+    }
+    // What the officer says once the order is carried out and checked. It moves nothing: the endpoint that replays this
+    // conversation never hears it, so the watch must stand exactly where the captain's own words left it.
+    function report({ ship, mode, ok, checks = 2, ms = 0, seconds = 0 }) {
+      const back = focus ? cap(onTable(false)) : restLine();
+      const proof = `Checked ${checks === 2 ? "twice" : `${count(checks)} times`}${ms ? `, ${ms} milliseconds` : ""}.`;
+      const line = !ok ? `Captain, ${cap(ship)} has not ${mode === "online" ? "answered" : "gone quiet"} after ${count(Math.round(seconds))} seconds. The order stands with Helm. Shall I try again?`
+        : mode === "online" ? `Captain, ${cap(ship)} answers again. ${proof} ${back}` : `Captain, ${cap(ship)} is offline. ${proof} Say bring it online when you want it back.`;
+      last = line;
+      return { say: line, view: { kind: "order", label: cap(ship), headline: !ok ? "No answer yet" : mode === "online" ? "Answering again" : "Offline, as ordered", lines: [], options: ok && mode !== "online" ? ["bring it online"] : [], ships: [ship] } };
     }
     function present(topic, item) {
       whyAt = 0; pending = null;
       focus = { topic, item: item || (topic.group ? null : topic.items[0]) };
       if (focus.item) return say(`${focus.item.headline.replace(/\s*Shall I[^?]*\?\s*$/, "")} ${cap(offers(focus.item))}`);
       const names = list(topic.items.map(label));
-      return say(`${topic.kind === "read" ? `${cap(names)} ${topic.items.length > 1 ? "are" : "is"} overdue a Commander read.` : `${cap(topic.label)}: ${names}.`} ${cap(groupOffers(topic))}`, topic.items[0].ui);
+      return say(`${topic.kind === "read" ? (topic.items.every((i) => i.fresh) ? `${cap(names)} ${topic.items.length > 1 ? "each have" : "has"} a fresh read from the Commander.` : `${cap(names)} ${topic.items.length > 1 ? "are" : "is"} overdue a Commander read.`) : `${cap(topic.label)}: ${names}.`} ${cap(groupOffers(topic))}`, topic.items[0].ui);
     }
     function why() {
       const it = focus && focus.item;
@@ -95,6 +131,7 @@
       return say(`I would ${focus.item ? verb : verb.replace(" it", " them all")}. ${it.rationale || it.why[0] || ""} Shall I?`);
     }
     async function record(decision) {
+      if (focus.item && focus.item.order && decision === "approve") return order({ ship: focus.item.ship, mode: focus.item.order.mode });
       const targets = focus.item ? [focus.item] : focus.topic.items;
       const results = [];
       for (const it of targets) results.push(await decide(it.key, decision, `captain said: ${decision}`));
@@ -107,8 +144,8 @@
         const next = walking || left.length === 1 ? present(topic, left[0]) : present(topic);
         return say(`${done} ${walking ? "Next in that set: " : `${cap(count(left.length))} left in that set. `}${next.say}`, next.ui);
       }
-      const rest = menu();
-      return say(`${done} ${rest.say}`, rest.ui);
+      const after = rest();
+      return say(`${done} ${after.say}`, after.ui);
     }
     function pick(text, route) {
       const ts = topics();
@@ -132,7 +169,10 @@
         if (r.decision === "approve") return p.pick ? present(p.pick) : record((VERBS[p.decision] || { done: p.decision }).done);
         return focus ? say(`Understood. ${cap(onTable(false))}`) : menu();
       }
+      // "Bring it back", said of a ship that stopped answering, is the order itself, not "bring it back to me later".
+      if (r.intent === "decide" && r.decision === "defer" && focus && focus.item && focus.item.order && /\bbring\b/.test(norm(r.text))) return order({ ship: focus.item.ship });
       switch (r.intent) {
+        case "control": return order(r);
         case "open": case "menu": case "greet": return menu(r.intent !== "menu");
         case "brief": return menu();
         case "repeat": return say(last || menu(true).say);
@@ -167,7 +207,8 @@
       // A bare ship name while a set of ships is on the table is a choice, not a cockpit order.
       const bare = words.trim().split(/\s+/).length <= 2;
       const shipsOnTable = focus && !focus.item && focus.topic.kind === "read";
-      const cockpit = ["open_ship", "read", "navigate"].includes(r.intent) && !(r.intent === "open_ship" && bare && shipsOnTable);
+      const ownItem = topics().some((t) => !t.group && t.items[0].ship === r.ship); // a ship with a topic of its own (a signal, an order waiting) is that topic
+      const cockpit = ["open_ship", "read", "navigate"].includes(r.intent) && !(r.intent === "open_ship" && bare && (shipsOnTable || ownItem));
       if (!cockpit) {
         const heard = await hear(r.intent === "open_ship" ? { ...r, intent: "free" } : r);
         if (heard) return { kind: "watch", ...heard };
@@ -178,7 +219,7 @@
       return question ? { kind: "question", words, ship: globalThis.officerShipWord(norm(words)) } : { kind: "watch", ...(await hear({ intent: "unclear" })) };
     }
 
-    return { open: () => menu(true), hear, converse, state: () => ({ focus: focus && (focus.item ? focus.item.headline : focus.topic.label), options: focus ? (focus.item || focus.topic.items[0]).options : topics().map((t) => t.label), last, remaining: items.length }) };
+    return { open: () => menu(true), hear, converse, report, state: () => ({ focus: focus && (focus.item ? focus.item.headline : focus.topic.label), options: focus ? (focus.item || focus.topic.items[0]).options : topics().map((t) => t.label), last, remaining: items.length }) };
   }
 
   // What the officer says about a ship, from the cockpit's own facts (the island reads them off the page; the LLM endpoint gets them handed over).

@@ -1,7 +1,7 @@
 // Demo host: record a decision on the frozen agenda (in memory) and say what comes next.
 // On the live Bridge the same call records through the fleet's own paths: heal decisions + execute,
 // contest and read decisions as notifications, stale reads as real Commander jobs.
-import { decisions, doneLine, load } from "./agenda.js";
+import { decisions, doneLine, load, now } from "./agenda.js";
 
 const DECISIONS = {
   approve: "approve", act: "approve", "do it": "approve", yes: "approve", run: "approve", "run it": "approve",
@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   const verdict = DECISIONS[String(req.body?.decision || "").toLowerCase()];
   if (!key) { res.status(400).json({ ok: false, error: "key is required" }); return; }
   if (!verdict) { res.status(400).json({ ok: false, error: `'${req.body?.decision}' is not a decision I can record: approve, reject, defer or acknowledge.` }); return; }
-  const item = load().items.find((i) => i.key === key);
+  const item = load({ live: (await now()).items }).items.find((i) => i.key === key);
   if (!item) { res.status(404).json({ ok: false, error: `'${key}' is not on the agenda.` }); return; }
   decisions.push({ key, decision: verdict, note: String(req.body?.note || "").slice(0, 300), ts: new Date().toISOString() });
   if (decisions.length > 500) decisions.shift();

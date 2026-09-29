@@ -1,7 +1,8 @@
 // node --test scripts/llm.test.mjs — the officer as the model: a chat-completions history in, the next line out.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reply } from "../api/voice/llm.js";
+process.env.AGENDA_FIXTURE = "fixtures/agenda.2026-09-17.json"; // the day these conversations were written against
+const { reply } = await import("../api/voice/llm.js");
 
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
@@ -28,7 +29,8 @@ test("a question in the past is not asked again; yes takes its proposal, anythin
 
 test("the live question goes to the brain with the ship's facts handed over by the island", async () => {
   let asked = null;
-  const facts = { role: "system", content: `FLEET_FACTS ${JSON.stringify({ ships: [{ ship: "intel", position: "#2", stage: "Rigged", constraint: "trust", read_line: "Tracking needs a clean read." }] })}` };
+  // as the platform hands it over: the session's system prompt, the island's state on a line of its own, the platform's own rules after it
+  const facts = { role: "system", content: `You are the First Officer.\nOFFICER_STATE ${JSON.stringify({ ships: [{ ship: "intel", position: "#2", stage: "Rigged", constraint: "trust", read_line: "Tracking needs a clean read." }] })}\n\nOutput is spoken aloud. Plain conversational text only.` };
   const line = await reply([facts, u("what is holding intel back?")], { ask: async (q) => { asked = q; return { say: "Trust in the numbers.", proposal: { ask: "Shall I run the read?" } }; } });
   assert.equal(line, "Trust in the numbers. Shall I run the read?");
   assert.equal(asked.ship, "intel");
@@ -45,4 +47,13 @@ test("the island can have the officer speak unprompted, once", async () => {
   const interrupt = { role: "system", content: "OFFICER_SAY Captain, cargo is back online. Shall I act on it, or carry on?" };
   assert.equal(await reply([u("the fixes"), a("…"), interrupt], neverAsk), "Captain, cargo is back online. Shall I act on it, or carry on?");
   assert.match(await reply([u("the fixes"), a("…"), interrupt, a("Captain, cargo is back online…"), u("carry on")], neverAsk), /\?$/);
+});
+
+test("what is live on the agenda arrives with the session, and an order is acknowledged without a question", async () => {
+  const cargo = { key: "incident:cargo", kind: "incident", ship: "cargo", short: "Cargo stopped answering", headline: "Cargo stopped answering 12 minutes ago.", why: ["It returns 404."], options: ["restore", "defer"], default: "restore", order: { ship: "cargo", mode: "online" } };
+  const state = { role: "system", content: `Prompt.\nOFFICER_STATE ${JSON.stringify({ live: [cargo] })}\n\nOutput is spoken aloud.` };
+  assert.match(await reply([state], neverAsk), /Four things today: Cargo stopped answering, /);
+  assert.match(await reply([state, a("…"), u("Cargo")], neverAsk), /^Cargo stopped answering 12 minutes ago\. Bring it online, park it, or hear why\?$/);
+  assert.equal(await reply([state, a("…"), u("Cargo"), a("…"), u("bring it back")], neverAsk), "On it. Helm is bringing Cargo back online.");
+  assert.match(await reply([state, a("…"), u("Cargo"), a("…"), u("bring it back"), a("On it."), u("the reads")], neverAsk), /overdue a Commander read/);
 });

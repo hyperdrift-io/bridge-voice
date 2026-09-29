@@ -1,0 +1,192 @@
+{
+ "ok": true,
+ "contract": "hd.voice.agenda.v1",
+ "generated": "2026-09-17T22:23:43+00:00",
+ "captain": "Captain",
+ "items": [
+  {
+   "key": "contest:lablab-ai-assemblyai-voice-agent-hackathon",
+   "kind": "contest",
+   "ship": "",
+   "headline": "The AssemblyAI voice hackathon closes 2026-09-30, and one founder step is still open.",
+   "why": [
+    "Five equal winners share ten thousand dollars: a thousand in cash and a thousand in speech credits each.",
+    "We are enrolled. The open step is yours: confirm the hackathon credits are attached to the speech account."
+   ],
+   "options": [
+    "act",
+    "defer"
+   ],
+   "default": "act",
+   "urgency": 60,
+   "ui": {
+    "panel": "contests"
+   },
+   "keys": [
+    "contest:lablab-ai-assemblyai-voice-agent-hackathon"
+   ],
+   "topic": "lablab.ai AssemblyAI Voice Agent Hackathon",
+   "rank": 1,
+   "short": "the voice hackathon deadline",
+   "rationale": "The only open step is a quick check on your side, and the entry closes 2026-09-30."
+  },
+  {
+   "key": "heal:app-context",
+   "kind": "heal",
+   "ship": "",
+   "headline": "Nine app-context findings need your call. The first: intel's agent guide does not inherit the fleet's root context.",
+   "why": [
+    "Each fix is small. In intel, it is a short inheritance pointer in the agent guide.",
+    "In hyper-cv, the Claude guide becomes a plain import of the agent guide.",
+    "Two proof-of-concept apps get a short guide that inherits the root context."
+   ],
+   "options": [
+    "approve",
+    "reject",
+    "defer"
+   ],
+   "default": "approve",
+   "urgency": 50,
+   "ui": {
+    "panel": "ops"
+   },
+   "keys": [
+    "64ef41ebad8b",
+    "f6019177b836",
+    "3b2d343b5289",
+    "a69b024fdc57",
+    "ffb2e03ef279",
+    "e86e63ae4f1f",
+    "243cd9966971",
+    "bea45a136124",
+    "739086d8882f"
+   ],
+   "rank": 2,
+   "short": "nine agent-guide fixes"
+  },
+  {
+   "key": "heal:skill-routing",
+   "kind": "heal",
+   "ship": "",
+   "headline": "Two skill-routing findings need your call. The first: the routing table names the contest skill, and that skill is not installed.",
+   "why": [
+    "The fix is to install the skill, or correct its name in the routing contract.",
+    "Then one sync command brings the agent guide back in line."
+   ],
+   "options": [
+    "approve",
+    "reject",
+    "defer"
+   ],
+   "default": "approve",
+   "urgency": 50,
+   "ui": {
+    "panel": "ops"
+   },
+   "keys": [
+    "3e0575a980b0",
+    "d8110a568d4f"
+   ],
+   "rank": 3,
+   "short": "two skill-routing fixes"
+  },
+  {
+   "key": "read:hyper-cv:run",
+   "kind": "read",
+   "ship": "hyper-cv",
+   "headline": "hyper-cv has had no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "The last verdict, on 2026-07-08, was: needs more traffic.",
+    "It asked to keep spend paused and check that saved CV versions are captured.",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "hyper-cv"
+   },
+   "keys": [
+    "read:hyper-cv:run"
+   ],
+   "rank": 4
+  },
+  {
+   "key": "read:intel:run",
+   "kind": "read",
+   "ship": "intel",
+   "headline": "intel has had no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "The last verdict, on 2026-07-08, was inconclusive.",
+    "It asked to verify the subscription capture path before reading the funnel.",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "intel"
+   },
+   "keys": [
+    "read:intel:run"
+   ],
+   "rank": 5
+  },
+  {
+   "key": "read:revela:run",
+   "kind": "read",
+   "ship": "revela",
+   "headline": "revela has had no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "The last verdict, on 2026-07-08, was inconclusive.",
+    "Traffic exists, and lead capture was only partly measured.",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "revela"
+   },
+   "keys": [
+    "read:revela:run"
+   ],
+   "rank": 6
+  },
+  {
+   "key": "read:web3-capital:run",
+   "kind": "read",
+   "ship": "web3-capital",
+   "headline": "web3-capital has had no Commander read since 2026-07-08. Shall I run one now?",
+   "why": [
+    "The last verdict, on 2026-07-08, was inconclusive.",
+    "It asked for one real-browser verification event before any traffic work.",
+    "A read takes a few minutes; I will tell you when it lands."
+   ],
+   "options": [
+    "run",
+    "defer"
+   ],
+   "default": "run",
+   "urgency": 40,
+   "ui": {
+    "ship": "web3-capital"
+   },
+   "keys": [
+    "read:web3-capital:run"
+   ],
+   "rank": 7
+  }
+ ],
+ "unavailable": [],
+ "note": "Frozen from the real Hyperdrift agenda (heal findings and Commander reads from 2026-09-03, the contest item from 2026-09-17), scrubbed down to seven items and reworded for the ear; the live fleet serves this contract from scripts/commander/agenda.py."
+}

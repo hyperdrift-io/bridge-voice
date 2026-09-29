@@ -12,10 +12,11 @@ export default async function handler(req, res) {
   const helmApp = OPERABLE[app];
   if (!helmApp) { res.status(400).json({ error: `'${app || "?"}' is not operable on the public demo. Only the sandbox ship 'cargo' is.` }); return; }
 
-  if (req.method === "GET") {
-    const r = await fetch(`${HELM_URL}/probe?app=${helmApp}`);
-    const body = await r.json();
-    res.status(200).json({ app, mode: body.mode || (body.http === 200 ? "online" : "offline"), http: body.http, url: body.url });
+  if (req.method === "GET") { // the ship as it answers from outside, and Helm's own log of the order since `since`
+    const since = String(req.query?.since || "");
+    const [body, rows] = await Promise.all([fetch(`${HELM_URL}/probe?app=${helmApp}`).then((r) => r.json()), since ? fetch(`${HELM_URL}/recent`).then((r) => r.json()).catch(() => []) : []]);
+    const steps = rows.filter((r) => r.kind === "control" && r.app === helmApp && String(r.ts) >= since).map((r) => ({ step: r.step, pct: r.pct, done: Boolean(r.done) }));
+    res.status(200).json({ app, mode: body.mode || (body.http === 200 ? "online" : "offline"), http: body.http, ms: body.latency_ms, url: body.url, steps });
     return;
   }
   if (req.method !== "POST") { res.setHeader("Allow", "GET, POST"); res.status(405).json({ error: "GET or POST" }); return; }

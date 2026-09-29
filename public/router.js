@@ -9,6 +9,7 @@
     "mcp-maker": ["mcp-maker", "mcp maker", "mcp", "maker"],
     revela: ["revela", "reveal a", "revella", "reveala", "revelar"],
     intel: ["intel", "intelligence"],
+    cargo: ["cargo"], // the sandbox ship: the one the judges' Bridge can really switch
   };
   const findShipWord = (t) => {
     for (const [ship, words] of Object.entries(SHIP_WORDS)) {
@@ -21,6 +22,9 @@
   const RULES = [
     [/^(start over|from the top|open the watch|restart the watch)\b/, () => ({ intent: "open" })],
     [/\b(close the watch|end the watch|stop the watch|that's all|that is all|that will be all|we're done|we are done|goodbye|bye|good night|enough for (today|now|tonight)|that'll do|i'm done|i am done)\b/, () => ({ intent: "close_watch" })],
+    // An order on a ship itself. Ahead of the decisions: "take it offline" starts like "take it", and "bring it back online" holds "bring it back".
+    [/\b(bring|put|get|turn|switch)\b.*\bonline\b|\bback online\b|^restore\b|\bbring cargo back\b/, (t) => ({ intent: "control", mode: "online", ship: findShipWord(t) })],
+    [/\b(take|put|turn|switch|bring)\b.*\b(offline|(in|into) maintenance)\b|\bcargo offline\b/, (t) => ({ intent: "control", mode: "maintenance", ship: findShipWord(t) })],
     [/^(hello|hi|hey|good (morning|afternoon|evening))\b/, (t) => (few(t, 4) ? { intent: "greet" } : null)],
     [/^(repeat|say (that|it) again|again|sorry|pardon|come again|what did you say|what was that)\b/, () => ({ intent: "repeat" })],
     [/^(thanks|thank you|cheers)\b/, (t) => (few(t, 3) ? { intent: "thanks" } : null)],
