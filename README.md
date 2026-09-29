@@ -90,6 +90,10 @@ the key stays server-side. Nothing on it writes to a production ship. One ship d
 sandbox. Say "take Cargo offline", then "bring it online": Helm carries the order out, the officer probes the ship from
 outside until it has answered twice, and only then reports.
 
+With `WATCH_CODE` set, the watch opens by invitation: a session, a question to the model and an order all need the code
+the invited link carries (`?watch=<code>`). The page and the agenda stay open to read. It keeps a public URL from
+spending the speech account for anyone who finds it.
+
 ```bash
 scripts/deploy-page.sh                      # stages exactly what the container needs and deploys it
 node scripts/take.mjs /tmp/gate --url https://bridge-voice-294160018950.europe-west1.run.app --voices <dir> --script docs/video/script.json   # the spoken gate, against the public page

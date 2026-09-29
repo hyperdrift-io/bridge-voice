@@ -119,6 +119,7 @@
   let pendingTurn = 0; // the captain's turn count when the proactive line was issued
   let pendingSay = ""; // a proactive line; if the model routes it through the tool instead of saying it, the tool hands it back
 
+  const INVITED = { "x-watch-code": new URLSearchParams(location.search).get("watch") || "" }; // a host that opens by invitation asks for the code its link carries
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
   const sayExactly = (text) => {
     if (ear) { speak(text); return; }
@@ -130,7 +131,7 @@
   async function start() {
     setState("connecting", "");
     try {
-      const grant = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); });
+      const grant = await fetch(`${API}/token`, { method: "POST", headers: INVITED }).then(async (r) => { if (!r.ok) throw new Error(r.status === 403 ? (await r.json()).error : `token ${r.status}`); return r.json(); });
       agentId = TEXT_ONLY ? null : grant.agent_id || null; // typed turns are injected messages, which a custom model is not handed (2026-09-24): typing stays on the managed session
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       volume = ctx.createGain(); volume.connect(ctx.destination);
@@ -260,7 +261,7 @@
     ws = null; ready = false; inFlight = false; queue = [];
     try { old.send(JSON.stringify({ type: "session.end" })); old.close(); } catch {}
     try {
-      const grant = await fetch(`${API}/token?voice=1`, { method: "POST" }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`token ${r.status}`))));
+      const grant = await fetch(`${API}/token?voice=1`, { method: "POST", headers: INVITED }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`token ${r.status}`))));
       if (ctx) connect(grant.token, () => { if (dock.dataset.state === "connecting") setState("listening"); sayNext(); });
     } catch (err) { teardown(String(err.message || err)); }
   }
@@ -324,7 +325,7 @@
   }
 
   // ── The watch ───────────────────────────────────────────────────────────
-  const api = (path, init) => fetch(`${API}${path}`, { headers: { "Content-Type": "application/json" }, ...init }).then(async (r) => {
+  const api = (path, init) => fetch(`${API}${path}`, { headers: { "Content-Type": "application/json", ...INVITED }, ...init }).then(async (r) => {
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw Object.assign(new Error(body.error || `${path} ${r.status}`), { status: r.status, body });
     return body;

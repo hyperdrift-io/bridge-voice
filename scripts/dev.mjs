@@ -49,6 +49,14 @@ createServer(async (req, res) => {
   const api = url.pathname.match(/^\/api\/voice\/([a-z-]+)$/) || url.pathname.match(/^\/api\/voice\/(llm)\/chat\/completions$/); // the second is what AssemblyAI calls: {base_url}/chat/completions
   if (api) {
     if (process.env.ONLY && api[1] !== process.env.ONLY) { res.writeHead(404).end("not served here"); return; } // ONLY=llm: a tunnel that exposes the officer's LLM endpoint and nothing else
+    // WATCH_CODE: the watch opens by invitation. Everything that spends the speech account (a session, a question to the
+    // gateway model) or moves the sandbox ship needs the code that the invited link carries (?watch=…). The agenda stays
+    // open; the officer's LLM endpoint has its own key. Without WATCH_CODE the host is open, as on a laptop.
+    const spends = api[1] === "token" || api[1] === "ask" || (api[1] === "control" && req.method !== "GET");
+    if (process.env.WATCH_CODE && spends && req.headers["x-watch-code"] !== process.env.WATCH_CODE) {
+      res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({ error: "The watch opens by invitation: use the link from the hackathon entry." }));
+      return;
+    }
     const handler = await handlerFor(api[1]);
     if (!handler) { res.writeHead(404).end("no such function"); return; }
     let raw = "";

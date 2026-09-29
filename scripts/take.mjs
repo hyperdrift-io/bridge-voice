@@ -163,7 +163,7 @@ const evaluate = async (expression) => (await call("Runtime.evaluate", { express
 await call("Page.enable");
 await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 2, mobile: false });
 await call("Page.addScriptToEvaluateOnNewDocument", { source: INSTRUMENT });
-await call("Page.navigate", { url: URL_BASE.includes("#") ? URL_BASE : `${URL_BASE.replace(/\/$/, "")}/` });
+await call("Page.navigate", { url: /[#?]/.test(URL_BASE) ? URL_BASE : `${URL_BASE.replace(/\/$/, "")}/` });
 for (let i = 0; i < 40 && !(await evaluate("Boolean(document.querySelector('#voice button'))")); i++) await sleep(250);
 await sleep(600);
 await call("Page.startScreencast", { format: "png", maxWidth: 2560, maxHeight: 1440, everyNthFrame: 1 });
