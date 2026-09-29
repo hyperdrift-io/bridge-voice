@@ -2,14 +2,20 @@
 // The AssemblyAI Voice Agent API hosts the conversation (turn-taking, barge-in, speaking first, TTS).
 // The fleet does the thinking: /api/voice/agenda (what to decide, with the why), /api/voice/decide,
 // /api/voice/ask (a question routed to the right fleet skill), /api/voice/interrupts (spoken unprompted).
-// One tool carries every utterance; router.js (loaded first) decides deterministically what it meant;
-// the model speaks the exact line it gets back. Cockpit tools drive the page's own functions (window.bridge).
+// Three ways to hold the conversation, fastest first; the island takes the first one the host offers:
+//   ear      AssemblyAI's streaming model (Universal-3.6 Pro Realtime) hears; the island decides the line; the voice speaks it
+//   agent    the voice agent hears and asks the officer-as-LLM endpoint (api/voice/llm.js) for every line; the island mirrors
+//   managed  the voice agent's own model carries every utterance to one tool and reads back the line it returns
+// router.js and watch.js decide what was meant, deterministically, in all three. Cockpit tools drive the page's own
+// functions (window.bridge).
 (() => {
   const WS_URL = "wss://agents.assemblyai.com/v1/ws";
   const API = "/api/voice";
   const SAMPLE_RATE = 24000;
   const IDLE_MS = 120000; // no speech for 2 minutes → end the session (there is no free tier)
   const INTERRUPT_EVERY_MS = 20000;
+  const AGENT_PROMPT = "You are the First Officer of the Hyperdrift Bridge. You report to the captain. Short sentences. Every line ends on a question.";
+  const ORDER_PATIENCE_MS = 40000; // how long an order may take before the officer says it has not landed
   const THINKING_LINES = [
     "Give me a moment; I am reading the signals.",
     "Still on it. I want to give you a straight answer, not a fast one.",
@@ -92,6 +98,13 @@
   let idleTimer = null;
   let agenda = null;
   let watch = null; // the conversation (watch.js)
+  let ear = null; // the streaming ear (ear.js); while it is open the island hears and decides, and the voice only speaks
+  let queue = []; // ear mode: the officer's lines not yet handed to the voice
+  let inFlight = false; // ear mode: a line is with the voice (asked for, not yet done)
+  let ready = false; // the voice session is up
+  let volume = null; // master gain: the officer lowers its voice the moment the captain starts, before a word is recognised
+  let carrying = false; // an order is with Helm; its report is the officer's next unprompted line
+  let ordered = { ship: "", at: 0 }; // the last order carried out from this watch: Helm's own record of it is not news to the captain
   let agentId = null; // set when the host binds us to the stored agent whose model is the officer itself (api/voice/llm.js)
   let mirrorAsked = false, lastAgentLine = "", mirrored = ""; // mirrored: the line the endpoint is about to say, as the island worked it out too (takes caption from it) // own-LLM mode: the island only mirrors the conversation so the cockpit can follow
   let closing = false; // true once the captain said goodbye, "said" once the farewell was spoken; then the session ends
@@ -108,7 +121,8 @@
 
   const send = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
   const sayExactly = (text) => {
-    if (agentId) { send({ type: "conversation.message", role: "system", content: `OFFICER_SAY ${text}` }); send({ type: "reply.create" }); return; }
+    if (ear) { speak(text); return; }
+    if (agentId) { mirrored = text; inFlight = true; send({ type: "reply.create", instructions: `OFFICER_SAY ${text}` }); return; } // the instructions reach the endpoint as the last system message (measured 2026-09-29)
     pendingSay = text; pendingTurn = turn; send({ type: "reply.create", instructions: `Say exactly: "${text.replace(/"/g, "'")}"` });
   };
   const touchIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => end("Watch ended after two quiet minutes."), IDLE_MS); };
@@ -116,37 +130,47 @@
   async function start() {
     setState("connecting", "");
     try {
-      const token = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); }).then((j) => { agentId = TEXT_ONLY ? null : j.agent_id || null; return j.token; }); // typed turns are injected messages, which a custom model is not handed (2026-09-24): typing stays on the managed session
+      const grant = await fetch(`${API}/token`, { method: "POST" }).then((r) => { if (!r.ok) throw new Error(`token ${r.status}`); return r.json(); });
+      agentId = TEXT_ONLY ? null : grant.agent_id || null; // typed turns are injected messages, which a custom model is not handed (2026-09-24): typing stays on the managed session
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
-      let ready = false;
-      if (!TEXT_ONLY) mic = await globalThis.officerMic.open({ ctx, rate: SAMPLE_RATE, onHealth: showMic, onChunk: (pcm) => { if (ready) send({ type: "input.audio", audio: b64(pcm) }); } });
-      const url = new URL(WS_URL);
-      url.searchParams.set("token", token);
-      ws = new WebSocket(url);
-      ws.onopen = () => send({ type: "session.update", session: agentId ? { agent_id: agentId } : SESSION });
-      ws.onclose = (e) => { if (dock.dataset.state !== "ended") teardown(e.code === 1006 ? "Connection refused — token expired or invalid." : "Connection closed."); };
-      ws.onerror = () => teardown("Connection error.");
-      ws.onmessage = ({ data }) => {
-        const ev = JSON.parse(data);
-        switch (ev.type) {
-          case "session.ready": ready = true; playhead = 0; setState("listening", ""); touchIdle(); openWatch(); break;
-          case "input.speech.started": userSpeaking = true; if (mic) mic.note("speech"); touchIdle(); setState("listening"); break;
-          case "input.speech.stopped": userSpeaking = false; watchLostWords(turn); break;
-          case "transcript.user.delta": out.textContent = ev.text; break;
-          case "transcript.user": userSpeaking = false; turn += 1; lastUserText = ev.text; lastUserAt = Date.now(); if (mic) mic.note("heard", ev.text); out.textContent = ev.text; if (agentId) answer(ev.text, { mirror: true }).catch(() => {}); break;
-          case "reply.started": if (mic) mic.note("officer", true); if (dock.dataset.state !== "thinking") setState("speaking"); break;
-          case "reply.audio": play(ev.data); break;
-          case "transcript.agent": out.textContent = ev.text; lastAgentLine = ev.text; if (closing && /fair winds/i.test(ev.text)) closing = "said"; break; // the farewell has been spoken: the next reply.done ends the session
-          case "reply.done": if (mic) mic.note("officer", false); pendingSay = ""; if (closing === "said") { closing = false; setTimeout(() => end("Watch closed. Fair winds."), ctx ? Math.max(0, playhead - ctx.currentTime) * 1000 + 400 : 400); break; } if (ev.status === "interrupted") flush(); if (dock.dataset.state !== "thinking") setState("listening"); break;
-          case "tool.call": runTool(ev); break;
-          case "session.error": console.error("session.error", ev); if (!ready) teardown(`${ev.code}: ${ev.message}`); else out.textContent = ev.message; break;
-          case "session.ended": teardown("Watch ended.", "ended"); break;
-        }
-      };
+      volume = ctx.createGain(); volume.connect(ctx.destination);
+      const hearing = agentId && grant.ear && !location.hash.startsWith("#ear=off") ? globalThis.officerEar.open({ ...grant.ear, rate: SAMPLE_RATE, keyterms: SESSION.input.keyterms, onSpeech: captainStarted, onWords: captainWords, onTurn: captainTurn, onLost: () => { if (ctx) end("The ear dropped. Reopen the watch."); } }) : null;
+      if (!TEXT_ONLY) mic = await globalThis.officerMic.open({ ctx, rate: SAMPLE_RATE, onHealth: showMic, onChunk: (pcm) => { if (ear) ear.send(pcm); else if (ready) send({ type: "input.audio", audio: b64(pcm) }); } });
+      ear = await hearing;
+      dock.dataset.ear = ear ? ear.model : "";
+      connect(grant.token, () => { playhead = 0; setState("listening", ""); touchIdle(); openWatch(); });
     } catch (err) {
       console.error(err);
       teardown(String(err.message || err));
     }
+  }
+  // The voice session. Events from a socket that is no longer ours (hung up on, see redial) are ignored.
+  function connect(token, onReady) {
+    const url = new URL(WS_URL);
+    url.searchParams.set("token", token);
+    const socket = new WebSocket(url);
+    ws = socket; ready = false;
+    socket.onopen = () => send({ type: "session.update", session: agentId ? { agent_id: agentId } : SESSION });
+    socket.onclose = (e) => { if (socket === ws && dock.dataset.state !== "ended") teardown(e.code === 1006 ? "Connection refused — token expired or invalid." : "Connection closed."); };
+    socket.onerror = () => { if (socket === ws) teardown("Connection error."); };
+    socket.onmessage = ({ data }) => {
+      if (socket !== ws) return;
+      const ev = JSON.parse(data);
+      switch (ev.type) {
+        case "session.ready": ready = true; onReady(); break;
+        case "input.speech.started": userSpeaking = true; if (mic) mic.note("speech"); touchIdle(); setState("listening"); break;
+        case "input.speech.stopped": userSpeaking = false; watchLostWords(turn); break;
+        case "transcript.user.delta": out.textContent = ev.text; break;
+        case "transcript.user": userSpeaking = false; turn += 1; lastUserText = ev.text; lastUserAt = Date.now(); if (mic) mic.note("heard", ev.text); out.textContent = ev.text; if (agentId) answer(ev.text, { mirror: true }).catch(() => {}); break;
+        case "reply.started": if (mic) mic.note("officer", true); if (dock.dataset.state !== "thinking") setState("speaking"); break;
+        case "reply.audio": play(ev.data); break;
+        case "transcript.agent": if (!ear) out.textContent = ev.text; lastAgentLine = ev.text; if (closing && /fair winds/i.test(ev.text)) closing = "said"; break; // the farewell has been spoken: the next reply.done ends the session
+        case "reply.done": inFlight = false; if (ear && queue.length && closing !== "said") { sayNext(); break; } if (mic) mic.note("officer", false); pendingSay = ""; if (closing === "said") { closing = false; setTimeout(() => end("Watch closed. Fair winds."), ctx ? Math.max(0, playhead - ctx.currentTime) * 1000 + 400 : 400); break; } if (ev.status === "interrupted") flush(); if (dock.dataset.state !== "thinking") setState("listening"); break;
+        case "tool.call": runTool(ev); break;
+        case "session.error": console.error("session.error", ev); if (!ready) teardown(`${ev.code}: ${ev.message}`); else out.textContent = ev.message; break;
+        case "session.ended": teardown("Watch ended.", "ended"); break;
+      }
+    };
   }
   function end(text) {
     send({ type: "session.end" }); // stops billing now instead of after the 30 s resume window
@@ -156,6 +180,8 @@
     clearTimeout(idleTimer);
     clearInterval(interruptTimer);
     flush();
+    queue = []; inFlight = false; carrying = false; ready = false;
+    if (ear) { ear.close(); ear = null; }
     if (ws) { ws.onclose = null; try { ws.close(); } catch {} ws = null; }
     if (mic) { mic.close(); mic = null; }
     showMic({ state: "off", text: "", level: 0 });
@@ -163,26 +189,27 @@
     setState(state, text);
     cockpit.clear();
   }
-  button.addEventListener("click", () => (ws ? end() : start()));
+  button.addEventListener("click", () => (ctx ? end() : start()));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
     input.value = "";
-    if (!ws) { start().then(() => typed(text)); return; }
+    if (!ctx) { start().then(() => typed(text)); return; }
     typed(text);
   });
   function typed(text) {
     const go = () => {
       if (!ws || ws.readyState !== 1 || dock.dataset.state === "connecting") { setTimeout(go, 500); return; }
+      if (ear) { captainTurn(text); return; } // the island decides: typed words take the same road as spoken ones
       turn += 1; lastUserText = text; lastUserAt = Date.now(); out.textContent = text; touchIdle();
       send({ type: "conversation.message", role: "user", content: text });
       send({ type: "reply.create", instructions: `The captain just said: "${text.replace(/"/g, "'")}". Handle it with your tool as usual, then read the 'say' text aloud word for word.` });
     };
     go();
   }
-  document.addEventListener("visibilitychange", () => { if (document.hidden && ws) end("Watch ended while the tab was hidden."); });
-  window.addEventListener("pagehide", () => { if (ws) end(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && ctx) end("Watch ended while the tab was hidden."); });
+  window.addEventListener("pagehide", () => { if (ctx) end(); });
 
   // ── Audio ───────────────────────────────────────────────────────────────
   function b64(buffer) {
@@ -201,7 +228,7 @@
     for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 0x8000;
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(ctx.destination);
+    src.connect(volume);
     playhead = Math.max(playhead, ctx.currentTime + 0.02);
     src.start(playhead);
     playhead += buf.duration;
@@ -212,6 +239,88 @@
     playing.forEach((s) => { try { s.stop(); } catch {} });
     playing = [];
     playhead = 0;
+  }
+
+  // ── Ear mode: the island hears, decides, and tells the voice what to say ──
+  // Measured 2026-09-29: the ear calls the turn 0.39–0.49 s after the captain's voice stops, and the voice starts
+  // 0.13–0.35 s after it is handed a line. The voice cannot be stopped once it has one (a reply.create queues behind the
+  // reply in progress; there is no cancel), so when the captain speaks over the officer the island drops the audio at
+  // once, hangs up on that voice session and dials a new one while the captain is still talking (redial).
+  const officerTalking = () => inFlight || playing.length > 0;
+  function speak(line) { queue.push(line); if (!inFlight) sayNext(); }
+  function sayNext() {
+    if (!ready || !queue.length) return;
+    const line = queue.shift();
+    inFlight = true; mirrored = line;
+    if (volume) volume.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
+    send({ type: "reply.create", instructions: `OFFICER_SAY ${line}` });
+  }
+  async function redial() {
+    const old = ws;
+    ws = null; ready = false; inFlight = false; queue = [];
+    try { old.send(JSON.stringify({ type: "session.end" })); old.close(); } catch {}
+    try {
+      const grant = await fetch(`${API}/token?voice=1`, { method: "POST" }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`token ${r.status}`))));
+      if (ctx) connect(grant.token, () => { if (dock.dataset.state === "connecting") setState("listening"); sayNext(); });
+    } catch (err) { teardown(String(err.message || err)); }
+  }
+  let duckTimer = 0;
+  function captainStarted() {
+    userSpeaking = true; if (mic) mic.note("speech"); touchIdle();
+    if (!officerTalking() || !volume) return;
+    volume.gain.setTargetAtTime(0.25, ctx.currentTime, 0.03); // lower the voice at the first sound; a recognised word stops it
+    clearTimeout(duckTimer); duckTimer = setTimeout(() => { if (volume && ctx) volume.gain.setTargetAtTime(1, ctx.currentTime, 0.1); }, 1200);
+  }
+  function captainWords(words) {
+    if (!ctx) return;
+    out.textContent = words;
+    if (!officerTalking() || globalThis.officerEar.echoes(words, mirrored)) return;
+    clearTimeout(duckTimer);
+    flush(); volume.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
+    if (mic) mic.note("officer", false);
+    document.dispatchEvent(new CustomEvent("officer:cut"));
+    setState("listening");
+    redial();
+  }
+  async function captainTurn(words) {
+    if (!ctx || (officerTalking() && globalThis.officerEar.echoes(words, mirrored))) return;
+    captainWords(words); // a turn so short that no partial came first still stops the officer
+    userSpeaking = false; turn += 1; lastUserText = words; lastUserAt = Date.now(); touchIdle();
+    if (mic) mic.note("heard", words);
+    out.textContent = words;
+    const t = turn;
+    const result = await answer(words).then(forTheEar).catch((err) => ({ say: `I hit a problem: ${String(err.message || err)}. Would you say that again?` }));
+    if (t !== turn || !ctx || !result.say) return; // the captain has spoken again meanwhile: this answer is stale
+    speak(result.say);
+  }
+
+  // ── Orders: Helm carries them out, the officer checks the result and reports ──
+  const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  async function carryOut({ ship, mode }) {
+    const since = new Date(Date.now() - 2000).toISOString().replace(/\.\d+Z$/, "Z"), started = Date.now();
+    const view = (headline, steps, options = []) => cockpit.show({ view: { kind: "order", label: ship, headline, lines: steps.map((s) => s.step), options, ships: [ship] } });
+    let outcome = { ship, mode, ok: false, seconds: ORDER_PATIENCE_MS / 1000 }, steps = [];
+    carrying = true;
+    try {
+      await api("/control", { method: "POST", body: JSON.stringify({ app: ship, mode }) });
+      for (let good = 0; Date.now() - started < ORDER_PATIENCE_MS && ctx; ) {
+        await sleep(700);
+        const now = await api(`/control?app=${encodeURIComponent(ship)}&since=${encodeURIComponent(since)}`).catch(() => null);
+        if (!now) continue;
+        steps = now.steps.length ? now.steps : steps;
+        cockpit.berth({ ship, http: now.http, ms: now.ms, working: true });
+        view(mode === "online" ? "Helm is bringing it back online" : "Helm is taking it offline", steps);
+        good = (mode === "online") === (now.http === 200) ? good + 1 : 0; // the ship itself, probed from outside: twice in a row or it does not count
+        if (good >= 2) { outcome = { ship, mode, ok: true, checks: good, ms: mode === "online" ? now.ms : 0 }; cockpit.berth({ ship, http: now.http, ms: now.ms }); break; }
+      }
+    } catch (err) { outcome.error = String(err.message || err); }
+    carrying = false; ordered = { ship, at: Date.now() };
+    if (!ctx || !watch) return;
+    const report = watch.report(outcome);
+    while (ctx && userSpeaking) await sleep(200); // never over the captain
+    if (!ctx) return;
+    cockpit.show({ view: { ...report.view, lines: steps.map((s) => s.step) } });
+    sayExactly(globalThis.officerForEar(report.say));
   }
 
   // ── The watch ───────────────────────────────────────────────────────────
@@ -226,6 +335,7 @@
   const asksSomething = (text) => /\?["”']?\s*$/.test(text);
   async function loadAgenda() {
     agenda = await api("/agenda");
+    if (agenda.sandbox) cockpit.berth(agenda.sandbox);
     watch = globalThis.officerWatch.create(agenda, { decide: (key, decision, note) => api("/decide", { method: "POST", body: JSON.stringify({ key, decision, note }) }) });
     return agenda;
   }
@@ -235,20 +345,22 @@
     const opening = watch.open();
     cockpit.show(opening);
     mirrored = globalThis.officerForEar(opening.say);
-    if (agentId) { // the officer is the model: hand it the cockpit's facts once, then let it open the watch itself
-      send({ type: "conversation.message", role: "system", content: `FLEET_FACTS ${JSON.stringify({ ships: ships().map(shipFacts), fleet: TOOLS.read_commander({}) })}` });
+    if (ear) speak(globalThis.officerForEar(opening.say));
+    else if (agentId) { // the officer is the model: hand it what is live and the cockpit's facts with the session, then let it open the watch itself
+      send({ type: "session.update", session: { system_prompt: `${AGENT_PROMPT}\nOFFICER_STATE ${JSON.stringify({ live: agenda.live || [], ships: ships().map(shipFacts), fleet: TOOLS.read_commander({}) })}\n` } });
       send({ type: "reply.create" });
     } else sayExactly(globalThis.officerForEar(opening.say));
     clearInterval(interruptTimer);
     interruptTimer = setInterval(pollInterrupts, INTERRUPT_EVERY_MS);
   }
   async function pollInterrupts() {
-    if (!ws || userSpeaking || dock.dataset.state === "thinking") return;
+    if (!ws || userSpeaking || carrying || dock.dataset.state === "thinking") return;
     let body;
     try { body = await api(`/interrupts?since=${encodeURIComponent(interruptsSince)}`); } catch { return; }
-    const fresh = body.interrupts || [];
+    const all = body.interrupts || [];
+    if (all.length) interruptsSince = all[all.length - 1].ts || body.now || interruptsSince;
+    const fresh = all.filter((f) => !(f.kind === "control" && f.ship === ordered.ship && Date.now() - ordered.at < 120000));
     if (!fresh.length) return;
-    interruptsSince = fresh[fresh.length - 1].ts || body.now || interruptsSince;
     if (userSpeaking) return; // the captain started talking meanwhile; it comes round again
     if (fresh[0].ship) showFor({ ship: fresh[0].ship });
     sayExactly(globalThis.officerForEar(`Captain, ${fresh.map((f) => f.say).join(" ")} Shall I act on it, or carry on?`));
@@ -316,7 +428,7 @@
   // The last word on every line: written for the ear, and ending on a question.
   function forTheEar(result) {
     let say = globalThis.officerForEar(result.say || "");
-    if (say && !asksSomething(say) && !result.close) say = `${say} ${OPEN_QUESTIONS[openQuestion++ % OPEN_QUESTIONS.length]}`; // a farewell is the one line that asks nothing
+    if (say && !asksSomething(say) && !result.close && !result.hold) say = `${say} ${OPEN_QUESTIONS[openQuestion++ % OPEN_QUESTIONS.length]}`; // a farewell is the one line that asks nothing
     return { ...result, say };
   }
   async function answer(text, { mirror = false } = {}) {
@@ -329,7 +441,7 @@
     const turnOf = await watch.converse(words, { proposal: Boolean(proposal) }); // the order of the turn lives in watch.js
     switch (turnOf.kind) {
       case "proposal-yes": pendingProposal = proposal; return mirror ? {} : acceptProposal();
-      case "watch": cockpit.show(turnOf); if (turnOf.close) { closing = true; cockpit.clear(); } if (mirror) mirrored = globalThis.officerForEar(turnOf.say); return turnOf; // the cockpit owns the screen now
+      case "watch": cockpit.show(turnOf); if (turnOf.close) { closing = true; cockpit.clear(); } if (mirror) mirrored = globalThis.officerForEar(turnOf.say); if (turnOf.order) carryOut(turnOf.order); return turnOf; // the cockpit owns the screen now
       case "cockpit": {
         const r = turnOf.route;
         if (r.intent === "navigate") { const f = TOOLS.navigate({ target: r.target }); return { ...f, say: f.error || f.done }; }
@@ -449,5 +561,5 @@
       return { done: `Opened ${label(best)}.`, ...describeState() };
     },
   };
-  window.voiceTools = { ...TOOLS, mirrored: () => mirrored, route: (t) => { turn += 1; lastUserText = t; lastUserAt = Date.now(); return captainSaid({ text: t }); }, loadAgenda }; // console: voiceTools.route("why?")
+  window.voiceTools = { ...TOOLS, mirrored: () => mirrored, busy: () => officerTalking() || queue.length > 0 || carrying, ear: () => (ear ? ear.model : ""), route: (t) => { turn += 1; lastUserText = t; lastUserAt = Date.now(); return captainSaid({ text: t }); }, loadAgenda }; // console: voiceTools.route("why?")
 })();

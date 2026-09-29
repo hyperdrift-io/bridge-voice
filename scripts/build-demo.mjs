@@ -2,10 +2,11 @@
 // Freeze a rendered Bridge snapshot into the public demo page.
 //
 //   cd ~/dev/hyperdrift/scripts && python3 -m bau.cli fleet-status --html --out /tmp/bridge.html
-//   node scripts/build-demo.mjs /tmp/bridge.html [--reads ~/dev/hyperdrift/.nightcrew] [--out public/index.html]
+//   node scripts/build-demo.mjs /tmp/bridge.html [--reads ~/dev/hyperdrift/.nightcrew] [--out public/index.html] [--ships revela,intel,hyper-cv,web3-capital]
 //
 // What it does, in order:
-//   1. scrubs private surfaces (notifications, notebook, commands, contests, strategy drawers)
+//   1. scrubs private surfaces (notifications, notebook, commands, contests, strategy drawers, ships outside the
+//      approved set, links and paths that lead behind the Bridge)
 //   2. rewrites each ship's headline line to its Commander read line
 //   3. inlines the last recorded Commander read per ship as #bridge-reads
 //   4. exposes the page's own functions as window.bridge (the script is one IIFE)
@@ -16,7 +17,22 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 
+const ISLAND = ["router.js", "mic.js", "ear.js", "watch.js", "cockpit.js", "voice.js"];
+const islandStamp = () => createHash("sha256").update([...ISLAND, "voice.css"].map((f) => readFileSync(join("public", f))).join("")).digest("hex").slice(0, 8);
+const islandTags = (stamp) => ISLAND.map((f) => `<script src="${f}?v=${stamp}"></script>`).join("\n");
+
 const args = process.argv.slice(2);
+// --restamp <page>: the island changed and the snapshot did not. Same page, same scrub, the island's files attached afresh.
+if (args[0] === "--restamp") {
+  const stamp = islandStamp();
+  const page = readFileSync(args[1], "utf8")
+    .replace(/<link rel="stylesheet" href="voice\.css\?v=[0-9a-f]+">/, `<link rel="stylesheet" href="voice.css?v=${stamp}">`)
+    .replace(/(<script src="[a-z]+\.js\?v=[0-9a-f]+"><\/script>\s*)+/, `${islandTags(stamp)}\n`);
+  if (!page.includes(`voice.js?v=${stamp}`) || !page.includes(`voice.css?v=${stamp}`)) { console.error("no island found in this page: build it from a render instead"); process.exit(1); }
+  writeFileSync(args[1], page);
+  console.log(`- island re-attached to ${args[1]} (stamp ${stamp}); the page itself is unchanged`);
+  process.exit(0);
+}
 const input = args.find((a) => !a.startsWith("--"));
 const opt = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
@@ -86,6 +102,18 @@ removeBlocks("details", /<details\b[^>]*id="[a-z0-9-]+-(?:notes|tactics|memory|b
 removeBlocks("form", /<form\b(?![^>]*captain-form)[^>]*>/, "forms (kept captain form)");
 removeBlocks("div", /<div\b[^>]*class="mission-actions"[^>]*>/, "mission action buttons");
 removeBlocks("li", /<li\b[^>]*>(?:(?!<\/li>)[\s\S])*?data-command=/, "palette command entries");
+// The ships the founder approved for the public page (2026-09-29: the four below). Any other card the renderer has
+// grown since goes, with its roadmap and pipeline; so do the links into analytics and the repo paths.
+const SHIPS = opt("ships", "revela,intel,hyper-cv,web3-capital").split(",");
+for (const app of (html.match(/<article class="ship[^"]*" data-app="([^"]+)"/g) || []).map((a) => a.match(/data-app="([^"]+)"/)[1])) {
+  if (!SHIPS.includes(app)) removeBlocks("article", new RegExp(`<article class="ship[^"]*" data-app="${app}"[^>]*>`), `ship outside the approved set (${app})`);
+}
+removeBlocks("span", /<span\b[^>]*class="signal-actions"[^>]*>/, "signal action links");
+removeBlocks("div", /<div\b[^>]*class="mcp-links"[^>]*>/, "mcp link rows");
+html = html.replace(/(<div class="mcp-head"><strong>[^<]*<\/strong>)<span>[^<]*<\/span>/g, "$1");
+html = html.replace(/<a\b[^>]*href="https?:\/\/[^"]*posthog\.com[^"]*"[^>]*>[\s\S]*?<\/a>/g, "");
+html = html.replace(/(<header class="fleet-overview-head">[\s\S]*?<\/h1>\s*)<span>[^<]*<\/span>/, "$1");
+report.push("analytics links, repo paths, fleet header line: stripped");
 html = html.replace(/\s+data-command="[^"]*"/g, "");
 html = html.replace(/\s+data-crew-api-base="[^"]*"/g, "");
 html = html.replace(/\s+data-trigger-[a-z]+="[^"]*"/g, "");
@@ -96,8 +124,11 @@ html = html.replace(
   /(<article class="ship[^"]*" data-app="([^"]+)"[^>]*>(?:(?!<\/button>)[\s\S])*?<span class="ship-move">)[\s\S]*?(<\/span>)/g,
   (whole, head, app, tail) => {
     const modal = html.match(new RegExp(`<dialog[^>]*id="modal-${app}"[\\s\\S]*?<\\/dialog>`));
+    // The night watch's report when the ship has one (the verdict in plain words, then the call); else the traffic panel's line.
+    const watch = modal && modal[0].match(/<div class="mission-report"><span>[^<]*<\/span><p>([a-z_]+) — ([^<]+)<\/p>/);
     const line = modal && modal[0].match(/<section class="traffic-panel[^"]*">[\s\S]*?<\/div>\s*<p>([^<]+)<\/p>/);
-    return head + (line ? line[1] : "Read pending.") + tail;
+    const verdict = watch ? watch[1].replace(/_/g, " ") : "";
+    return head + (watch ? `${verdict[0].toUpperCase()}${verdict.slice(1)}. ${watch[2]}` : line ? line[1] : "Read pending.") + tail;
   }
 );
 report.push("ship headline lines: rewritten to the Commander read line");
@@ -149,17 +180,14 @@ if (!html.includes("window.bridge = {")) {
   html = html.slice(0, iifeEnd) + exportLine + html.slice(iifeEnd);
 }
 
-// 5. Attach the voice island: exactly one, as files next to the page (public/router.js, mic.js, watch.js, cockpit.js, voice.js, voice.css), so the
+// 5. Attach the voice island: exactly one, as files next to the page (public/router.js, mic.js, ear.js, watch.js, cockpit.js, voice.js, voice.css), so the
 // snapshot never goes stale against the island. A Bridge rendered with BRIDGE_VOICE on already carries an inlined copy;
 // the scrub strips that copy's <form>, which kills its script half-way (seen 2026-09-09: two docks, one dead). Drop it.
 html = html.replace(/<style>\s*\/\* Bridge Voice dock[\s\S]*?<\/style>\s*/g, "").replace(/<script>\s*\/\/ The officer's ear[\s\S]*?<\/script>\s*/g, "");
 // The island's files carry a content stamp: a judge's browser (or the founder's, mid-test) can never mix a new page with a cached old island.
-const stamp = createHash("sha256").update(["router.js", "mic.js", "watch.js", "cockpit.js", "voice.js", "voice.css"].map((f) => readFileSync(join("public", f))).join("")).digest("hex").slice(0, 8);
+const stamp = islandStamp();
 html = html.replace("</head>", `<meta name="robots" content="noindex">\n<link rel="stylesheet" href="voice.css?v=${stamp}">\n</head>`);
-html = html.replace(
-  "</body>",
-  `<script type="application/json" id="bridge-reads">${JSON.stringify(reads)}</script>\n<script src="router.js?v=${stamp}"></script>\n<script src="mic.js?v=${stamp}"></script>\n<script src="watch.js?v=${stamp}"></script>\n<script src="cockpit.js?v=${stamp}"></script>\n<script src="voice.js?v=${stamp}"></script>\n</body>`
-);
+html = html.replace("</body>", `<script type="application/json" id="bridge-reads">${JSON.stringify(reads)}</script>\n${islandTags(stamp)}\n</body>`);
 
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, html);
@@ -168,6 +196,7 @@ writeFileSync(out, html);
 report.push(`remaining £/$ amounts: ${count(/£\s?[\d,.]+|\$\s?[\d,.]+k?/g)}`);
 report.push(`remaining "reddit" mentions: ${count(/reddit/gi)}`);
 report.push(`remaining data-command: ${count(/data-command=/g)}`);
+report.push(`remaining links out: ${[...new Set((html.match(/href="https?:\/\/[^"]+"/g) || []).map((h) => h.slice(6, -1)))].join(", ") || "none"}`);
 report.push(`remaining forms: ${count(/<form\b/g)} (captain form expected)`);
 report.push(`ships: ${(html.match(/<article class="ship[^"]*" data-app="([^"]+)"/g) || []).map((s) => s.match(/data-app="([^"]+)"/)[1]).join(", ")}`);
 report.push(`size: ${(html.length / 1024).toFixed(0)} KB → ${out}`);

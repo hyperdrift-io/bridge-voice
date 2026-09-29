@@ -68,7 +68,7 @@ createServer(async (req, res) => {
     return;
   }
   if (process.env.API_ONLY) { res.writeHead(404).end("api only"); return; }
-  const file = join("public", url.pathname === "/" ? "index.html" : url.pathname);
+  const file = url.pathname === "/" && process.env.PAGE ? process.env.PAGE : join("public", url.pathname === "/" ? "index.html" : url.pathname); // PAGE: a snapshot being prepared, served in place of the published one
   if (!existsSync(file)) { res.writeHead(404).end("not found"); return; }
   // No caching: a judge (or the founder mid-test) must never get yesterday's page or a stale island.
   res.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream", "cache-control": "no-store" }).end(readFileSync(file));

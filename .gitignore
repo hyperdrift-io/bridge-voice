@@ -8,3 +8,6 @@ dist/
 public/index.html
 # the printed deck is rebuilt by scripts/slides.mjs; the founder's final PDF goes to the submission, not to git
 docs/slides/*.pdf
+
+# a day being prepared: its snapshot and agenda stay local until the founder has read the scrub report
+snapshots/
