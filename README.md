@@ -12,11 +12,12 @@ Concept of record: [docs/FIRST-OFFICER.md](docs/FIRST-OFFICER.md).
 
 ## What AssemblyAI does here
 
-One WebSocket to the Voice Agent API hosts the conversation: turn detection fires the
-action about two seconds after your last word, barge-in is understood, the officer can
-speak first, and the transcript is verbatim. The fleet does the thinking: an agenda of
-what to decide with the evidence attached, decisions recorded through the fleet's own
-paths, a question routed to the right fleet skill, urgent events spoken unprompted.
+Two AssemblyAI services carry the conversation. **Universal-3.6 Pro Realtime** (Streaming API, released
+2026-09-29) hears the captain and calls the end of the turn; the **Voice Agent API** speaks, through a stored agent
+whose model is the officer's own endpoint. Between the two the island decides the line at once, so an answer starts
+0.5–0.8 s after the captain stops (measured in the browser over five takes; 0.8–1.0 s when the captain cut the officer off). The fleet does the thinking: an agenda
+of what to decide with the evidence attached, decisions recorded through the fleet's own paths, a question routed to
+the right fleet skill, an order carried out by Helm and reported back unprompted once it is checked.
 Measurements and what the docs did not say: [docs/VOICE-AGENT-NOTES.md](docs/VOICE-AGENT-NOTES.md).
 
 Honest scope: the Bridge and the fleet's control plane are pre-existing Hyperdrift
@@ -48,12 +49,27 @@ cd - && npm run build:demo -- /tmp/bridge.html --reads ~/dev/hyperdrift/.nightcr
 The build scrubs private surfaces and prints a report. `public/index.html` is
 the frozen result and stays out of git until the founder has read that report.
 
+## The ear (live since 2026-09-29)
+
+With `OFFICER_EAR=universal-3-6-pro` the token endpoint also mints a Streaming API token and the island opens its own
+ear (`public/ear.js`). The microphone goes to the ear, never to the voice agent. At the end of a turn the island runs
+the router and the watch, and hands the line to the voice with `reply.create` and `instructions: "OFFICER_SAY …"`,
+which the platform passes to the officer's endpoint as the last system message. Measured: the turn is called
+0.39–0.49 s after the voice stops; the officer's voice starts 0.13–0.35 s after it is handed the line.
+
+The voice cannot be stopped once it has a line (a `reply.create` queues behind the reply in progress; there is no
+cancel). So when the captain speaks over the officer, the island drops the audio at once, hangs up on that voice
+session and dials a new one while the captain is still talking: the answer to a barge-in starts in 0.8–1.0 s.
+`#ear=off` on the URL, or an ear that fails to open, falls back to the path below.
+
 ## The officer as the model (own-LLM path, live since 2026-09-24)
 
 The managed session model goes off script when a turn leaves the happy path (notes, fourth session). AssemblyAI lets a
 stored agent call your own OpenAI-compatible endpoint for every reply, so the officer is the model: the API-only host
 `bridge-voice-api` on Cloud Run serves `/api/voice/llm`, the stored agent points at it, and the island binds to that
-agent whenever the microphone is in use. Answers start 1.4–1.9 s after the captain stops, with no model in between.
+agent whenever the microphone is in use. With the ear off, the voice agent hears for itself and asks the endpoint for
+every line: answers start 1.4–1.9 s after the captain stops, with no model in between. What is live on the agenda and
+the cockpit's facts reach the endpoint in the session's system prompt (`OFFICER_STATE`, one line of JSON).
 
 ```bash
 # .env: ASSEMBLYAI_API_KEY, OFFICER_LLM_KEY=<long random>, OFFICER_AGENT_ID=<from create>; optional ANTHROPIC_API_KEY
@@ -70,18 +86,21 @@ managed session. Without `OFFICER_AGENT_ID` the island configures the session it
 
 Live at **https://bridge-voice-294160018950.europe-west1.run.app** (Chrome, allow the microphone, press *Open the watch*).
 One Cloud Run service serves the frozen snapshot, the officer's files and `/api/voice/*`; sessions are capped at 300 s and
-the key stays server-side. Nothing on it writes to a production ship.
+the key stays server-side. Nothing on it writes to a production ship. One ship does take orders: **Cargo**, Helm's
+sandbox. Say "take Cargo offline", then "bring it online": Helm carries the order out, the officer probes the ship from
+outside until it has answered twice, and only then reports.
 
 ```bash
 scripts/deploy-page.sh                      # stages exactly what the container needs and deploys it
-node scripts/mic-test.mjs --url https://bridge-voice-294160018950.europe-west1.run.app "the reads@16" "intel@30"   # the spoken gate, against the public page
+node scripts/take.mjs /tmp/gate --url https://bridge-voice-294160018950.europe-west1.run.app --voices <dir> --script docs/video/script.json   # the spoken gate, against the public page
 ```
 
 ## The demo video
 
-One real watch, recorded by the spoken gate: `node scripts/mic-test.mjs --take <dir> …` (a scheduled rehearsal) or
-`--live --take <dir>` (the founder, real microphone), then `node scripts/assemble-take.mjs <dir> out.mp4` and the cards in
-`docs/video/`. How to record it, the beats and the two cuts: `docs/video/TAKE.md`.
+One real watch, recorded from the page: `node scripts/take.mjs <dir> --url … --voices <dir> --script docs/video/script.json`
+(the captain's lines go out a moment after the officer really finishes, or cut in where the script says), or
+`node scripts/mic-test.mjs --live --take <dir>` (the founder, real microphone); then `node scripts/assemble-take.mjs <dir>
+out.mp4` and the cards in `docs/video/`. How to record it, the beats and the two cuts: `docs/video/TAKE.md`.
 
 ## Layout
 
@@ -91,18 +110,20 @@ public/router.js         the officer's ear and mouth: words → one intent, line
 public/cockpit.js        the officer's hands: what is on the table, and the Bridge moved to match
 public/watch.js          the conversation itself: the officer offers, the captain chooses (pure; tests: scripts/watch.test.mjs)
 public/mic.js            the microphone: capture → 24 kHz PCM16, and the health read the dock shows
+public/ear.js            the ear: AssemblyAI's streaming model hears the captain and calls the end of the turn
 public/voice.js          the island: session, playback, the watch, the single tool, cockpit tools
 public/voice.css         a handful of rules over the Bridge's own cascade
 api/voice/token.js       mints a single-use temp token (the key never reaches the browser)
-api/voice/agenda.js      the agenda contract from a frozen, scrubbed day (fixtures/agenda.json)
+api/voice/agenda.js      the agenda contract from a frozen, scrubbed day (fixtures/agenda.json), led by what is live (the sandbox ship, probed)
 api/voice/decide.js      records a decision, returns the next item
 api/voice/ask.js         a question → skill → opinion + one proposal (gateway model on the demo host)
 api/voice/interrupts.js  Helm's sandbox events, spoken unprompted
-api/voice/control.js     the judges' write path: Helm's sandbox ship only, rate-limited
+api/voice/control.js     the judges' write path: Helm's sandbox ship only, rate-limited; reads back the ship and Helm's steps
 api/voice/llm.js         the officer as the model: OpenAI-compatible endpoint for AssemblyAI's own-LLM agents (tests: scripts/llm.test.mjs)
 scripts/deploy-page.sh   the judges' page to Cloud Run, from a staged copy
 scripts/build-demo.mjs   snapshot → scrub → expose page functions → attach the officer's files
 scripts/mic-test.mjs     spoken-path gate: real Chrome, fake capture device, per-turn timing
+scripts/take.mjs         records a take with a captain who follows the officer's real pace; also the gate for the ear path
 scripts/dev.mjs          zero-dependency local server: static + every api/voice/<name>.js
 scripts/smoke.mjs        headless kill gate: audio in, timing, routing, read-back fidelity
 scripts/agent.mjs        the stored agent whose model is api/voice/llm.js: create, point, list, delete

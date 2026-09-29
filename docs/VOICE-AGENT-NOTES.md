@@ -221,3 +221,42 @@ quiet at −91 dB, both voices where the log says.
 - **Chrome's noise suppression strips a synthetic noise floor**, so a scheduled take still reports "sends pure silence"
   in the dock; the take hides the mic line. A real microphone never has this problem.
 - Five takes, 1.2–1.9 s from end of speech to the answer on every scripted turn; the free question 2–3 s.
+
+## Sixth session (2026-09-29): a second way in, and Universal-3.6 Pro Realtime as the ear
+
+The founder's verdict on the first video: long blanks between question and answer, and not striking enough. Measured
+on that take: 20 s of dead air out of 100, all of it from a captain on a fixed schedule. Two things changed.
+
+**What reaches a custom model, settled by probe** (socket only, the host logging the shape of each request):
+
+- `reply.create` with `instructions` arrives at the endpoint as one more system message, last in the list, for that
+  reply only. `OFFICER_SAY <line>` in it and the officer says the line: this is how a report or an interrupt is spoken.
+- `session.update` with a `system_prompt`, sent after the session is bound to an agent, replaces the prompt the
+  endpoint is handed. One line of JSON in it (`OFFICER_STATE`) carries what is live on the agenda and the cockpit's
+  facts. At bind time the same field is refused: "agent_id is mutually exclusive with other session fields".
+- An injected `conversation.message`, user or system, still never arrives. The request carries `messages`, `model`,
+  `stream`, `stream_options` and nothing that names the session.
+- From `reply.create` to the first audio: 350 ms on the first line of a session, 129–136 ms after that.
+
+**Universal-3.6 Pro Realtime** was released that morning (Streaming API, `speech_model=universal-3-6-pro`; it is also
+what the Streaming API now runs when no model is named). The Voice Agent API documents no field to choose its speech
+model. On the captain's own orders (six short lines, a generated voice, keyterms set): six of six heard right, the
+turn called 0.34–0.50 s after the voice stopped; one first line took 0.83 s. Universal-3.5 Pro gave the same words and
+the same times on this clean audio, so the difference the release notes measure (short replies, names, noise) is not
+one this test can show.
+
+**The ear path.** The microphone goes to the Streaming API; the island decides the line the moment the turn is
+called; the Voice Agent API speaks it. In the browser, over four takes of six turns: answers start **0.5–0.8 s** after
+the captain's voice ends. The longest silence in the conversation is 1.2 s.
+
+- **Barge-in is the island's job on this path.** The voice cannot be cancelled, so the island drops the audio, ends
+  that voice session and opens another while the captain is still speaking. A fresh session is ready in about 0.45 s;
+  the answer to a one-word barge-in started 0.8–1.0 s after the word.
+- **A one-word order has guesses for partials** ("Koga" before "Cargo."). The take shows finals only.
+- **The voice agent session needs no audio in.** It stayed up for the whole watch with nothing sent but lines to say.
+- With the ear off, the same page on the same host answers in 1.4–1.5 s (the voice agent hearing for itself).
+
+**An order, carried out and checked.** Cargo is Helm's sandbox ship. When it does not answer, that leads the agenda.
+"Bring it back" goes to Helm; the island shows Helm's own steps as they are logged, probes the ship from outside until
+it has answered twice in a row, and only then has the officer report, unprompted. From the captain's first word to the
+report: 12.7 s in the recorded take, about 4 s of it Helm's.
