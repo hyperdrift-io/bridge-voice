@@ -1,7 +1,6 @@
 # First Officer — the concept of record
 
-**Decided 2026-09-03 with the founder. Supersedes the "voice remote control" reading of
-`ONE-NIGHT-PLAN.md`; keeps its plumbing.**
+**Decided 2026-09-03 with the founder. Supersedes the first "voice remote control" plan; keeps its plumbing.**
 
 ## The idea in one paragraph
 

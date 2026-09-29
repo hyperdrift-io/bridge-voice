@@ -15,9 +15,8 @@ Bridge. It opens the watch with the top agenda item, explains why, records the
 decision, answers a free question through the right fleet skill with one
 proposal, and the cockpit follows the conversation. AssemblyAI hosts the
 conversation; the fleet does the thinking. Plan of record:
-`docs/FIRST-OFFICER.md` (it supersedes `docs/ONE-NIGHT-PLAN.md` and
-`docs/BUILD-PLAN.md`). Where the work stands: `docs/RESUME.md`. Measurements
-and protocol lessons: `docs/VOICE-AGENT-NOTES.md`.
+`docs/FIRST-OFFICER.md`. Measurements and protocol lessons:
+`docs/VOICE-AGENT-NOTES.md`.
 
 **Conversation first** (founder, 2026-09-03): the entry is done when the
 captain holds five spoken turns (open → why → next → do it → free question →
