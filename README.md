@@ -92,7 +92,8 @@ outside until it has answered twice, and only then reports.
 
 With `WATCH_CODE` set, the watch opens by invitation: a session, a question to the model and an order all need the code
 the invited link carries (`?watch=<code>`). The page and the agenda stay open to read. It keeps a public URL from
-spending the speech account for anyone who finds it.
+spending the speech account for anyone who finds it. `WATCHES_PER_DAY` (default 30) is the ceiling for everyone
+together, counted in the running instance: deploy the page with one instance kept up so the count holds.
 
 ```bash
 scripts/deploy-page.sh                      # stages exactly what the container needs and deploys it

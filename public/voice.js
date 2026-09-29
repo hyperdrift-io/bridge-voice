@@ -131,7 +131,7 @@
   async function start() {
     setState("connecting", "");
     try {
-      const grant = await fetch(`${API}/token`, { method: "POST", headers: INVITED }).then(async (r) => { if (!r.ok) throw new Error(r.status === 403 ? (await r.json()).error : `token ${r.status}`); return r.json(); });
+      const grant = await fetch(`${API}/token`, { method: "POST", headers: INVITED }).then(async (r) => { if (!r.ok) throw new Error([403, 429].includes(r.status) ? (await r.json()).error : `token ${r.status}`); return r.json(); });
       agentId = TEXT_ONLY ? null : grant.agent_id || null; // typed turns are injected messages, which a custom model is not handed (2026-09-24): typing stays on the managed session
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       volume = ctx.createGain(); volume.connect(ctx.destination);

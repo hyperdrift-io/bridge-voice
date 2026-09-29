@@ -6,6 +6,11 @@ const TOKEN_TTL_S = 60; // browser must open the socket within a minute
 const SESSION_CAP_S = 300; // hard stop per session — there is no free tier
 const PER_IP_PER_HOUR = 40; // a watch, plus a fresh voice session each time the captain cuts the officer off (voice.js, redial)
 const hits = new Map();
+// The ceiling on what a public link can spend in a day, whoever holds it: watches opened since midnight UTC, counted in
+// this process. It holds while one instance stays up (deploy with --min-instances 1 --max-instances 1); a restart starts
+// the count again. A redial inside a watch is not a new watch. WATCHES_PER_DAY=0 lifts the ceiling.
+const PER_DAY = Number(process.env.WATCHES_PER_DAY ?? 30);
+let day = { date: "", watches: 0 };
 
 export async function mintToken({ ip, origin, host, voiceOnly = false }) {
   if (!process.env.ASSEMBLYAI_API_KEY) return { status: 500, body: { error: "ASSEMBLYAI_API_KEY is not set" } };
@@ -14,6 +19,10 @@ export async function mintToken({ ip, origin, host, voiceOnly = false }) {
   const recent = (hits.get(ip) || []).filter((t) => now - t < 3600000);
   if (recent.length >= PER_IP_PER_HOUR) return { status: 429, body: { error: "too many sessions from this address; try again later" } };
   hits.set(ip, [...recent, now]);
+  const today = new Date(now).toISOString().slice(0, 10);
+  if (day.date !== today) day = { date: today, watches: 0 };
+  if (PER_DAY && !voiceOnly && day.watches >= PER_DAY) return { status: 429, body: { error: "The officer has stood every watch it may stand today. The film shows it; the watch reopens at midnight UTC." } };
+  if (!voiceOnly) day.watches += 1;
 
   const url = new URL(TOKEN_URL);
   url.searchParams.set("expires_in_seconds", String(TOKEN_TTL_S));

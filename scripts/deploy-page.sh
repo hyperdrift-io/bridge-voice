@@ -14,5 +14,5 @@ mkdir -p "$stage/scripts"
 cp "$here/package.json" "$here/Dockerfile" "$stage/"
 cp -R "$here/api" "$here/fixtures" "$here/public" "$stage/"
 cp "$here/scripts/dev.mjs" "$stage/scripts/"
-gcloud run deploy "$service" --source "$stage" --clear-base-image --project "$project" --region "$region" --allow-unauthenticated --max-instances 2 \
-  --set-env-vars "ASSEMBLYAI_API_KEY=$ASSEMBLYAI_API_KEY,OFFICER_LLM_KEY=$OFFICER_LLM_KEY,OFFICER_AGENT_ID=${OFFICER_AGENT_ID:-},OFFICER_EAR=${OFFICER_EAR:-universal-3-6-pro},WATCH_CODE=${WATCH_CODE:-},CREW_API=0" --quiet
+gcloud run deploy "$service" --source "$stage" --clear-base-image --project "$project" --region "$region" --allow-unauthenticated --min-instances 1 --max-instances 1 \
+  --set-env-vars "ASSEMBLYAI_API_KEY=$ASSEMBLYAI_API_KEY,OFFICER_LLM_KEY=$OFFICER_LLM_KEY,OFFICER_AGENT_ID=${OFFICER_AGENT_ID:-},OFFICER_EAR=${OFFICER_EAR:-universal-3-6-pro},WATCH_CODE=${WATCH_CODE:-},WATCHES_PER_DAY=${WATCHES_PER_DAY:-30},CREW_API=0" --quiet
