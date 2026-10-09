@@ -25,5 +25,12 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=22 <26",
+      "onFail": "error"
+    }
   }
 }
