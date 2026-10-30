@@ -1,15 +1,14 @@
 # Bridge Voice — Agent Guide
 
+> Inherits `~/dev/hyperdrift/AGENTS.md`.
+
 Standalone repo (`hyperdrift-io/bridge-voice`), checked out at
 `apps/poc/bridge-voice` in the Hyperdrift monorepo. Commit **here**, never
-into the root monorepo. Inherits the Hyperdrift workspace guides
-(`~/dev/hyperdrift/AGENTS.md`, `CLAUDE.md`, `meta/PHILOSOPHY.md`) — this file
-adds the contest-specific rules.
+into the root monorepo.
 
 ## Mission
 
-Contest entry for the lablab.ai AssemblyAI Voice Agent Hackathon
-(Sep 1–30 2026, team "Hyperdrift"). Concept of record since 2026-09-03: **the
+Submitted to the lablab.ai AssemblyAI Voice Agent Hackathon (30 September 2026); outcome in `~/dev/hyperdrift/.growth/contests/ledger.jsonl`. Concept of record since 2026-09-03: **the
 First Officer**, a voice that reports to the captain over the real Hyperdrift
 Bridge. It opens the watch with the top agenda item, explains why, records the
 decision, answers a free question through the right fleet skill with one
@@ -25,9 +24,6 @@ roadmap is a bonus.
 
 ## Hard rules
 
-- **Contest window rule**: the voice layer (island, worklet, token function,
-  build script) is built inside Sep 1–30 with dated commits. The Bridge is
-  pre-existing infrastructure and the writeup says so plainly.
 - **Kill condition**: ~2 s from end of speech to spoken answer. Measured
   1.5–2.1 s on 2026-09-17 through a real Chrome and the real mic path
   (`node scripts/mic-test.mjs`, 16 spoken turns). Re-measure after any change
@@ -48,19 +44,18 @@ roadmap is a bonus.
 - **Sponsor-first**: the AssemblyAI Voice Agent API is the star. Turn
   detection fires the tool; if Whisper could replace the sponsor, the design
   is wrong.
-- **Voice Covenant** (`meta/PHILOSOPHY.md` #8) applies to every word the
-  agent speaks and every line of the writeup — enable, never diminish; sound
-  human. The founder writes the name, tagline and description himself.
+- The founder writes the name, tagline and description himself.
 
 ## Stack rules
 
 - Static HTML + one serverless function. No framework, no bundler, no SDK:
-  raw WebSocket + AudioWorklet. The Waku shell in `src/` is unused.
+  raw WebSocket + AudioWorklet.
+- `src/` (a Waku shell), its `package.json` dependencies and `dev`/`build`/`typegen`
+  scripts, `pnpm-lock.yaml` and `pnpm-workspace.yaml` are unused scaffold. The served
+  app (`npm run serve`, the Dockerfile) never touches them.
 - Pure cascading CSS (`public/voice.css`). No Tailwind, no CSS-in-JS.
-- npm only (pnpm is decommissioned; `pnpm-lock.yaml` is scaffold debt). Zero
-  production dependencies: the scripts run on bare Node ≥ 22, no install.
-- English everywhere; one logical concern per commit; QA-then-merge, no PR
-  unless genuinely needed.
+- The scripts run on bare Node ≥ 22 with no install.
+- English everywhere; one concern per commit; commit to main and push.
 
 ## Wiring
 
@@ -87,4 +82,3 @@ roadmap is a bonus.
   `officerForEar` (dates a person would say, no symbols).
 - `public/mic.js` owns capture and mic health; the dock always shows one of
   listening · hearing · heard · silent · unheard · stalled · blocked.
-- The Fleet Commander MCP is not involved at runtime.
